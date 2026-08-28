@@ -14,6 +14,7 @@ COMPOSITE_SIGNAL_COLUMNS = [
     "comp_trend_momentum_align_signal",
     "comp_breakout_volume_confirmed_signal",
     "comp_mean_reversion_confluence_signal",
+    "comp_macd_hist_candle_reversal_signal",
 ]
 
 
@@ -336,4 +337,53 @@ def generate_composite_signals(
         )
         pbar.update(1)
 
-        return signals
+        # 8. MACD Histogram + Candle Reversal Signal (1)
+        signals["comp_macd_hist_candle_reversal_signal"] = _calc_macd_hist_candle_reversal(df_norm)
+        pbar.update(1)
+
+        # Ensure all columns are present, filled with NONE, and matching index
+        for col in COMPOSITE_SIGNAL_COLUMNS:
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
+
+        return signals[COMPOSITE_SIGNAL_COLUMNS]
+
+
+def _calc_macd_hist_candle_reversal(df_norm: pd.DataFrame) -> pd.Series:
+    """Calculate MACD Histogram turning point combined with candlestick confirmation."""
+    import numpy as np
+
+    close = df_norm["close"]
+    open_p = df_norm["open"]
+
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+    macd_hist = macd_line - macd_signal
+
+    is_max_macd_hist = macd_hist == macd_hist.rolling(10, min_periods=2).max()
+    is_min_macd_hist = macd_hist == macd_hist.rolling(10, min_periods=2).min()
+    hist_rolling_sum = macd_hist.rolling(5, min_periods=2).sum()
+
+    o_prev = open_p.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    c_prev = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    h = macd_hist.to_numpy(dtype=float, na_value=np.nan)
+    h_sum = hist_rolling_sum.to_numpy(dtype=float, na_value=np.nan)
+
+    is_min_shift = is_min_macd_hist.shift(1, fill_value=False).to_numpy(dtype=bool)
+    is_max_shift = is_max_macd_hist.shift(1, fill_value=False).to_numpy(dtype=bool)
+
+    valid = ~np.isnan(c) & ~np.isnan(o_prev) & ~np.isnan(c_prev) & ~np.isnan(h) & ~np.isnan(h_sum)
+    bull = valid & (o_prev >= c_prev) & (h < 0) & is_min_shift & (h_sum < 0) & (c > o_prev)
+    bear = valid & (o_prev <= c_prev) & (h > 0) & is_max_shift & (h_sum > 0) & (c < o_prev)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )

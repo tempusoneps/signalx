@@ -6,6 +6,7 @@ import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.momentum import (
+    MOMENTUM_SIGNAL_COLUMNS,
     _bound_signal,
     _calc_ao_saucer,
     _calc_cmo,
@@ -36,42 +37,18 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_MOMENTUM_SIGNALS = [
-    "mom_rsi_ob_os_14_signal",
-    "mom_rsi_ob_os_7_signal",
-    "mom_rsi_ob_os_21_signal",
-    "mom_rsi_ob_os_28_signal",
-    "mom_rsi_50_cross_14_signal",
-    "mom_rsi_50_cross_21_signal",
-    "mom_stoch_kd_cross_14_3_3_signal",
-    "mom_stoch_kd_cross_5_3_3_signal",
-    "mom_stoch_rsi_cross_14_signal",
-    "mom_williams_r_14_signal",
-    "mom_williams_r_28_signal",
-    "mom_cci_100_14_signal",
-    "mom_cci_200_20_signal",
-    "mom_roc_zero_cross_5_signal",
-    "mom_roc_zero_cross_10_signal",
-    "mom_roc_zero_cross_20_signal",
-    "mom_mfi_ob_os_14_signal",
-    "mom_tsi_cross_13_25_signal",
-    "mom_fisher_cross_9_signal",
-    "mom_ao_zero_cross_signal",
-    "mom_ao_saucer_signal",
-    "mom_ultimate_osc_signal",
-    "mom_cmo_14_signal",
-]
+EXPECTED_MOMENTUM_SIGNALS = MOMENTUM_SIGNAL_COLUMNS
 
 
 def test_momentum_signals_all_23_columns_present():
-    """Verify generate_momentum_signals produces exactly the 23 expected momentum signals."""
+    """Verify generate_momentum_signals produces exactly the expected momentum signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_momentum_signals(df)
 
-    assert len(EXPECTED_MOMENTUM_SIGNALS) == 23
+    assert len(EXPECTED_MOMENTUM_SIGNALS) == 30
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 23
+    assert len(res.columns) == 30
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_MOMENTUM_SIGNALS:
@@ -114,7 +91,7 @@ def test_momentum_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 23
+    assert len(res.columns) == 30
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -129,7 +106,7 @@ def test_momentum_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 23
+    assert len(res.columns) == 30
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -149,7 +126,7 @@ def test_momentum_signals_normalization():
     res = generate_momentum_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 23
+    assert len(res.columns) == 30
 
 
 def test_momentum_signals_missing_columns():

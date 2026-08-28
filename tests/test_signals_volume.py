@@ -6,6 +6,7 @@ import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.volume import (
+    VOLUME_SIGNAL_COLUMNS,
     _calc_volume_spike_direction,
     _calc_vwap_band_reversal,
     generate_volume_signals,
@@ -42,31 +43,18 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_VOLUME_SIGNALS = [
-    "volume_obv_ema_cross_20_signal",
-    "volume_cmf_zero_cross_20_signal",
-    "volume_cmf_threshold_cross_20_signal",
-    "volume_vwap_cross_20_signal",
-    "volume_vwap_cross_50_signal",
-    "volume_vwap_cross_100_signal",
-    "volume_vwap_band_reversal_20_signal",
-    "volume_spike_direction_20_signal",
-    "volume_pvt_ma_cross_14_signal",
-    "volume_adl_ma_cross_signal",
-    "volume_force_index_13_signal",
-    "volume_eom_zero_14_signal",
-]
+EXPECTED_VOLUME_SIGNALS = VOLUME_SIGNAL_COLUMNS
 
 
 def test_volume_signals_all_12_columns_present():
-    """Verify generate_volume_signals produces exactly the 12 expected volume signals."""
+    """Verify generate_volume_signals produces exactly the expected volume signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volume_signals(df)
 
-    assert len(EXPECTED_VOLUME_SIGNALS) == 12
+    assert len(EXPECTED_VOLUME_SIGNALS) == 18
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLUME_SIGNALS:
@@ -109,7 +97,7 @@ def test_volume_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -124,7 +112,7 @@ def test_volume_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -144,7 +132,7 @@ def test_volume_signals_normalization():
     res = generate_volume_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
 
 
 def test_volume_signals_missing_columns():
@@ -161,7 +149,7 @@ def test_volume_signals_zero_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -175,7 +163,7 @@ def test_volume_signals_constant_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 12
+    assert len(res.columns) == 18
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())

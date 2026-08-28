@@ -295,6 +295,83 @@ def _initialize_default_catalog() -> None:
             "+VI 14 crosses above -VI 14",
             "+VI 14 crosses below -VI 14",
         ),
+        (
+            "trend_trix_cross_15_signal",
+            "TRIX (15 period) oscillator crosses its 9-period signal line",
+            "signalx_native",
+            "TRIX 15 crosses above TRIX signal line",
+            "TRIX 15 crosses below TRIX signal line",
+        ),
+        (
+            "trend_kama_reversal_10_signal",
+            "Kaufman Adaptive Moving Average (KAMA 10) slope inflection reversal",
+            "pandas_ta",
+            "KAMA 10 hooks upwards after a downward slope",
+            "KAMA 10 hooks downwards after an upward slope",
+        ),
+        (
+            "trend_tma_cross_10_signal",
+            "Triangular Moving Average (TMA 10) price crossover",
+            "signalx_native",
+            "Close crosses above TMA 10",
+            "Close crosses below TMA 10",
+        ),
+        (
+            "trend_market_structure_break_signal",
+            "Market Structure Break (MSB) higher high / lower low breakout",
+            "signalx_native",
+            "Close breaks above 10-bar recent high after making lower low",
+            "Close breaks below 10-bar recent low after making higher high",
+        ),
+        (
+            "trend_ma_alignment_20_50_signal",
+            "Moving Average Alignment (Close > SMA50 and SMA20 > SMA50)",
+            "signalx_native",
+            "Close > SMA50 and SMA20 > SMA50 (Bullish trend alignment)",
+            "Close < SMA50 and SMA20 < SMA50 (Bearish trend alignment)",
+        ),
+        (
+            "trend_pullback_sma20_50_signal",
+            "Pullback to SMA20 within established higher-timeframe trend",
+            "signalx_native",
+            "Close dips below SMA20 while SMA20 > SMA50 (Bullish pullback)",
+            "Close rallies above SMA20 while SMA20 < SMA50 (Bearish pullback)",
+        ),
+        (
+            "trend_micro_trend_3_signal",
+            "3-bar micro trend persistence",
+            "signalx_native",
+            "3 consecutive higher closes (Close > Close[1] > Close[2])",
+            "3 consecutive lower closes (Close < Close[1] < Close[2])",
+        ),
+        (
+            "trend_micro_reversal_signal",
+            "1-bar micro reversal after 2-bar persistent run",
+            "signalx_native",
+            "Close > Close[1] after 2 consecutive lower closes",
+            "Close < Close[1] after 2 consecutive higher closes",
+        ),
+        (
+            "trend_price_cross_sma20_signal",
+            "Price crossover with 20-period Simple Moving Average",
+            "signalx_native",
+            "Close crosses above SMA 20",
+            "Close crosses below SMA 20",
+        ),
+        (
+            "trend_prev_bar_break_signal",
+            "Price breakout above previous bar high or below previous bar low",
+            "signalx_native",
+            "Close > High[1] (Prior high breakout)",
+            "Close < Low[1] (Prior low breakdown)",
+        ),
+        (
+            "trend_tii_14_signal",
+            "Trend Intensity Index (TII 14) trend regime boundaries",
+            "pandas_ta",
+            "TII 14 > 80 (Strong upward trend intensity)",
+            "TII 14 < 20 (Strong downward trend intensity)",
+        ),
     ]
     for name, desc, lib, buy_t, sell_t in trend_definitions:
         register_signal(
@@ -471,6 +548,55 @@ def _initialize_default_catalog() -> None:
             "CMO 14 crosses above +50",
             "CMO 14 crosses below -50",
         ),
+        (
+            "mom_min_max_10_rsi_signal",
+            "10-period price extreme combined with RSI(14) overbought/oversold",
+            "signalx_native",
+            "Close reaches 10-period low with RSI 14 < 30 (Oversold extreme)",
+            "Close reaches 10-period high with RSI 14 > 70 (Overbought extreme)",
+        ),
+        (
+            "mom_rsi_divergence_5_signal",
+            "5-bar regular bullish/bearish RSI divergence",
+            "signalx_native",
+            "Low < Low[5] while RSI > RSI[5] (Bullish regular divergence)",
+            "High > High[5] while RSI < RSI[5] (Bearish regular divergence)",
+        ),
+        (
+            "mom_connors_rsi_3_2_100_signal",
+            "Connors RSI (3, 2, 100) extreme overbought (>85) / oversold (<15) zones",
+            "signalx_native",
+            "Connors RSI < 15.0 (Extreme oversold)",
+            "Connors RSI > 85.0 (Extreme overbought)",
+        ),
+        (
+            "mom_mfi_reversal_20_80_signal",
+            "Money Flow Index (MFI 14) exiting overbought/oversold boundary reversal",
+            "signalx_native",
+            "MFI 14 < 20 and hooks upward (MFI > MFI[1])",
+            "MFI 14 > 80 and hooks downward (MFI < MFI[1])",
+        ),
+        (
+            "mom_shift_3_bar_signal",
+            "3-bar short-term momentum turnaround shift",
+            "signalx_native",
+            "Close > Close[1] after Close[1] < Close[2] (Bullish momentum shift)",
+            "Close < Close[1] after Close[1] > Close[2] (Bearish momentum shift)",
+        ),
+        (
+            "mom_return_momentum_5_signal",
+            "5-bar cumulative return momentum (> +2% / < -2%)",
+            "signalx_native",
+            "5-bar return > +2.0%",
+            "5-bar return < -2.0%",
+        ),
+        (
+            "mom_extreme_move_10_signal",
+            "10-bar extreme move price extension (> +5% / < -5%)",
+            "signalx_native",
+            "10-bar return > +5.0%",
+            "10-bar return < -5.0%",
+        ),
     ]
     for name, desc, lib, buy_t, sell_t in mom_definitions:
         register_signal(
@@ -605,6 +731,111 @@ def _initialize_default_catalog() -> None:
             "HV(10)/HV(30) > 1.5 with positive price return",
             "HV(10)/HV(30) > 1.5 with negative price return",
         ),
+        (
+            "vol_bb_rejection_20_signal",
+            "Bollinger Bands (20, 2.0 std) outer band rejection with wick and RSI confluence",
+            "signalx_native",
+            "Low < LB, Close > LB, RSI < 35, and Lower Wick > Body (Bullish rejection)",
+            "High > UB, Close < UB, RSI > 65, and Upper Wick > Body (Bearish rejection)",
+        ),
+        (
+            "vol_bb_bandwidth_regime_signal",
+            "Bollinger Bandwidth Squeeze vs Expansion relative to 20-period SMA",
+            "signalx_native",
+            "BB Width < 0.7 * SMA20(BB Width) (Volatility squeeze / contraction)",
+            "BB Width > 1.3 * SMA20(BB Width) (Volatility expansion surge)",
+        ),
+        (
+            "vol_compression_breakout_5_20_signal",
+            "Volatility compression STD(5) < 0.5*STD(20) combined with 10-bar price breakout",
+            "signalx_native",
+            "STD5 < 0.5*STD20 and Close > 10-bar High (Squeeze upside breakout)",
+            "STD5 < 0.5*STD20 and Close < 10-bar Low (Squeeze downside breakdown)",
+        ),
+        (
+            "vol_atr_expansion_14_20_signal",
+            "ATR(14) expansion > 1.5x SMA20(ATR) with directional price move",
+            "signalx_native",
+            "ATR14 > 1.5*SMA20(ATR) and Close > Close[1]",
+            "ATR14 > 1.5*SMA20(ATR) and Close < Close[1]",
+        ),
+        (
+            "vol_range_breakout_10_signal",
+            "10-period High/Low Range Breakout",
+            "signalx_native",
+            "Close > Highest(High, 10)[1]",
+            "Close < Lowest(Low, 10)[1]",
+        ),
+        (
+            "vol_volatility_break_10_50_signal",
+            "Short-term vs long-term volatility regime shift (STD10 vs STD50)",
+            "signalx_native",
+            "STD10 > STD50 (Short-term volatility expansion)",
+            "STD10 < STD50 (Short-term volatility compression)",
+        ),
+        (
+            "vol_range_compression_20_signal",
+            "Bar range compression (Height < 0.5x SMA20 Range) with SMA20 position",
+            "signalx_native",
+            "Bar Range < 0.5*SMA20(Range) and Close >= SMA20",
+            "Bar Range < 0.5*SMA20(Range) and Close < SMA20",
+        ),
+        (
+            "vol_volatility_drop_5_20_signal",
+            "Volatility Drop (STD5 < 0.5x STD20) relative to SMA20 baseline",
+            "signalx_native",
+            "STD5 < 0.5*STD20 and Close >= SMA20",
+            "STD5 < 0.5*STD20 and Close < SMA20",
+        ),
+        (
+            "vol_range_expansion_20_signal",
+            "Bar range expansion (Height > 1.5x SMA20 Range) with directional candle",
+            "signalx_native",
+            "Bar Range > 1.5*SMA20(Range) and Close > Open",
+            "Bar Range > 1.5*SMA20(Range) and Close < Open",
+        ),
+        (
+            "vol_range_shift_5_10_signal",
+            "5-bar vs 10-bar range extreme shift",
+            "signalx_native",
+            "Lowest(Low, 5) > Lowest(Low, 10) (Rising base / higher low)",
+            "Highest(High, 5) < Highest(High, 10) (Falling ceiling / lower high)",
+        ),
+        (
+            "vol_range_position_10_signal",
+            "Range Position within 10-period high-low channel",
+            "signalx_native",
+            "Close in lower 20% of 10-period range (Deep value)",
+            "Close in upper 20% of 10-period range (Overextended)",
+        ),
+        (
+            "vol_range_flip_5_signal",
+            "5-period range flip breakout",
+            "signalx_native",
+            "Close > Highest(High, 5)[1]",
+            "Close < Lowest(Low, 5)[1]",
+        ),
+        (
+            "vol_linreg_channel_reversal_20_signal",
+            "20-period Linear Regression Channel lower/upper band reversal",
+            "signalx_native",
+            "Close dips below lower 2-std linreg band and bounces back",
+            "Close exceeds upper 2-std linreg band and reverses back",
+        ),
+        (
+            "vol_keltner_reversal_20_signal",
+            "Keltner Channel (20, 2.0 ATR) outer band reversal",
+            "signalx_native",
+            "Close dips below lower Keltner Channel and bounces back",
+            "Close exceeds upper Keltner Channel and reverses back",
+        ),
+        (
+            "vol_envelope_breakout_20_signal",
+            "Moving Average Envelope (20, +/-2.5%) breakout",
+            "signalx_native",
+            "Close > SMA20 * 1.025 (Upper envelope breakout)",
+            "Close < SMA20 * 0.975 (Lower envelope breakdown)",
+        ),
     ]
     for name, desc, lib, buy_t, sell_t in vol_definitions:
         register_signal(
@@ -703,6 +934,48 @@ def _initialize_default_catalog() -> None:
             "ta",
             "Ease of Movement 14 crosses above 0",
             "Ease of Movement 14 crosses below 0",
+        ),
+        (
+            "volume_vsa_confirmation_20_signal",
+            "Volume Spread Analysis (VSA) volume surge confirmation (> 1.2x SMA20 Volume)",
+            "signalx_native",
+            "Close > Open and Volume > 1.2 * SMA20(Volume) (Bullish volume confirmation)",
+            "Close < Open and Volume > 1.2 * SMA20(Volume) (Bearish volume confirmation)",
+        ),
+        (
+            "volume_price_confirmation_20_signal",
+            "Volume expansion confirming price direction (Volume > SMA20)",
+            "signalx_native",
+            "Close > Close[1] and Volume > SMA20(Volume)",
+            "Close < Close[1] and Volume > SMA20(Volume)",
+        ),
+        (
+            "volume_vpt_divergence_5_signal",
+            "5-bar regular Volume Price Trend (VPT) divergence",
+            "signalx_native",
+            "Low < Low[5] while VPT > VPT[5] (Bullish VPT divergence)",
+            "High > High[5] while VPT < VPT[5] (Bearish VPT divergence)",
+        ),
+        (
+            "volume_trend_3_bar_signal",
+            "3-bar volume trend (expansion vs contraction)",
+            "signalx_native",
+            "3 consecutive bars of rising volume (Volume > Volume[1] > Volume[2])",
+            "3 consecutive bars of falling volume (Volume < Volume[1] < Volume[2])",
+        ),
+        (
+            "volume_price_divergence_signal",
+            "Volume-Price divergence (absorption vs churn)",
+            "signalx_native",
+            "Close < Close[1] while Volume > Volume[1] (Bullish absorption)",
+            "Close > Close[1] while Volume > Volume[1] (Bearish churn/effort vs result)",
+        ),
+        (
+            "volume_amv_cross_20_signal",
+            "Adaptive Moving Volume (AMV) 20-period price crossover",
+            "signalx_native",
+            "Close crosses above 20-period AMV baseline",
+            "Close crosses below 20-period AMV baseline",
         ),
     ]
     for name, desc, lib, buy_t, sell_t in vol_flow_definitions:
@@ -817,6 +1090,97 @@ def _initialize_default_catalog() -> None:
             "Tweezer Bottom: matching lows with bullish second candle",
             "Tweezer Top: matching highs with bearish second candle",
         ),
+        (
+            "cdl_couple_cs_signal",
+            "Couple Candlestick pattern (Green-Green breakout or Red-Red breakdown)",
+            "signalx_native",
+            "Green candle closes at high and breaks previous green candle high",
+            "Red candle closes at low and breaks previous red candle low",
+        ),
+        (
+            "cdl_fakey_pattern_signal",
+            "Fakey Pattern (False 5-bar breakout with strong reversal close)",
+            "signalx_native",
+            "Low sweeps 5-bar low and reverses to close bullish (Close > Open)",
+            "High sweeps 5-bar high and reverses to close bearish (Close < Open)",
+        ),
+        (
+            "cdl_liquidity_sweep_signal",
+            "Liquidity Sweep (5-bar extreme sweep with close back inside)",
+            "signalx_native",
+            "Low sweeps 5-bar low but Close finishes above the swept level",
+            "High sweeps 5-bar high but Close finishes below the swept level",
+        ),
+        (
+            "cdl_equal_high_low_sweep_signal",
+            "Equal Highs / Equal Lows liquidity sweep",
+            "signalx_native",
+            "Equal Lows swept and Close > Low[1]",
+            "Equal Highs swept and Close < High[1]",
+        ),
+        (
+            "cdl_gap_up_down_signal",
+            "Opening Price Gap Up / Down relative to prior bar range",
+            "signalx_native",
+            "Open > High[1] (Opening gap up)",
+            "Open < Low[1] (Opening gap down)",
+        ),
+        (
+            "cdl_body_size_expansion_signal",
+            "Candle body expansion (> 2.0x 20-period SMA body)",
+            "signalx_native",
+            "Body > 2.0 * SMA20(Body) and Close > Open (Bullish body expansion)",
+            "Body > 2.0 * SMA20(Body) and Close < Open (Bearish body expansion)",
+        ),
+        (
+            "cdl_wick_rejection_signal",
+            "Wick Rejection (> 2.0x body size)",
+            "signalx_native",
+            "Lower Wick > 2.0 * Body and Close > Open (Bullish wick rejection)",
+            "Upper Wick > 2.0 * Body and Close < Open (Bearish wick rejection)",
+        ),
+        (
+            "cdl_body_direction_signal",
+            "2-bar consecutive directional body agreement",
+            "signalx_native",
+            "2 consecutive bullish candle bodies (Close > Open and Close[1] > Open[1])",
+            "2 consecutive bearish candle bodies (Close < Open and Close[1] < Open[1])",
+        ),
+        (
+            "cdl_close_strength_signal",
+            "Close Strength relative to candle midpoint and open",
+            "signalx_native",
+            "Close > Midpoint and Close > Open (Strong bullish close)",
+            "Close < Midpoint and Close < Open (Strong bearish close)",
+        ),
+        (
+            "cdl_price_rejection_signal",
+            "Price Rejection (Sweeps prior extreme but closes directional)",
+            "signalx_native",
+            "Low < Low[1] and Close > Open (Bullish price rejection)",
+            "High > High[1] and Close < Open (Bearish price rejection)",
+        ),
+        (
+            "cdl_break_retest_signal",
+            "Break and Retest of 10-period High/Low extremes",
+            "signalx_native",
+            "Close[1] breaks 10-bar High and current bar pulls back and holds above the level",
+            "Close[1] breaks 10-bar Low and current bar bounces and stays below the level",
+        ),
+        (
+            "cdl_trend_exhaustion_signal",
+            "Trend Exhaustion (Counter-trend reaction after 3-bar directional move)",
+            "signalx_native",
+            "Close > Close[1] after 2 prior lower closes (Bullish exhaustion bounce)",
+            "Close < Close[1] after 2 prior higher closes (Bearish exhaustion pullback)",
+        ),
+        (
+            "cdl_final_push_signal",
+            "Final Push (Higher/lower close on diminishing volume)",
+            "signalx_native",
+            "Close > Close[1] > Close[2] on declining Volume (Bullish exhaustion push)",
+            "Close < Close[1] < Close[2] on declining Volume (Bearish exhaustion push)",
+        ),
     ]
     for name, desc, lib, buy_t, sell_t in cdl_definitions:
         register_signal(
@@ -909,6 +1273,41 @@ def _initialize_default_catalog() -> None:
             "Price crosses above 30-period linear regression line",
             "Price crosses below 30-period linear regression line",
         ),
+        (
+            "stat_ma_stretch_zscore_20_signal",
+            "Moving Average Stretch (Z-score > 2.0 or < -2.0 relative to 20-period SMA)",
+            "signalx_native",
+            "Price Z-Score 20 < -2.0 (Price stretched deeply below MA - mean reversion buy)",
+            "Price Z-Score 20 > +2.0 (Price stretched deeply above MA - mean reversion sell)",
+        ),
+        (
+            "stat_hurst_proxy_signal",
+            "Rolling Hurst Exponent proxy (<0.5 mean-reversion, >0.5 trending regime)",
+            "signalx_native",
+            "Hurst proxy < 0.5 (Mean-reverting market regime)",
+            "Hurst proxy > 0.5 (Persistent trending market regime)",
+        ),
+        (
+            "stat_range_mid_reversion_10_signal",
+            "10-period High/Low Range Midpoint Reversion",
+            "signalx_native",
+            "Close < (Highest(High, 10) + Lowest(Low, 10)) / 2 (Below range midpoint)",
+            "Close > (Highest(High, 10) + Lowest(Low, 10)) / 2 (Above range midpoint)",
+        ),
+        (
+            "stat_price_acceleration_signal",
+            "1-bar Price Change Acceleration (Delta Momentum)",
+            "signalx_native",
+            "(Close - Close[1]) > (Close[1] - Close[2]) (Price accelerating upward)",
+            "(Close - Close[1]) < (Close[1] - Close[2]) (Price accelerating downward)",
+        ),
+        (
+            "stat_mean_distance_5pct_signal",
+            "Mean Distance Deviation (> 5% away from 20-period SMA)",
+            "signalx_native",
+            "Close < SMA20 * 0.95 (Deep discount > 5% below SMA20)",
+            "Close > SMA20 * 1.05 (Stretched premium > 5% above SMA20)",
+        ),
     ]
     for name, desc, lib, buy_t, sell_t in stat_definitions:
         register_signal(
@@ -921,7 +1320,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 7. COMPOSITE SIGNALS (7 signals)
+    # 7. COMPOSITE SIGNALS (8 signals)
     # -------------------------------------------------------------------------
     comp_definitions = [
         (
@@ -972,6 +1371,13 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "Confluence of Oversold RSI (<30), lower BB touch, and Price Z-score < -2.0",
             "Confluence of Overbought RSI (>70), upper BB touch, and Price Z-score > +2.0",
+        ),
+        (
+            "comp_macd_hist_candle_reversal_signal",
+            "MACD Histogram turning point combined with candlestick reversal confirmation",
+            "signalx_native",
+            "MACD Histogram trough reversal in negative zone with bullish engulfing close",
+            "MACD Histogram peak reversal in positive zone with bearish engulfing close",
         ),
     ]
     for name, desc, lib, buy_t, sell_t in comp_definitions:

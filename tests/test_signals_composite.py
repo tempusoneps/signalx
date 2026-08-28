@@ -7,6 +7,7 @@ import pytest
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.candlestick import generate_candlestick_signals
 from signalx.signals.composite import (
+    COMPOSITE_SIGNAL_COLUMNS,
     _calc_breakout_volume_confirmed,
     _calc_ma_consensus,
     _calc_master_ensemble,
@@ -55,15 +56,7 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_COMPOSITE_SIGNALS = [
-    "comp_trend_consensus_signal",
-    "comp_momentum_consensus_signal",
-    "comp_master_ensemble_signal",
-    "comp_ma_consensus_signal",
-    "comp_trend_momentum_align_signal",
-    "comp_breakout_volume_confirmed_signal",
-    "comp_mean_reversion_confluence_signal",
-]
+EXPECTED_COMPOSITE_SIGNALS = COMPOSITE_SIGNAL_COLUMNS
 
 
 def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
@@ -78,15 +71,15 @@ def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def test_composite_signals_all_7_columns_present():
-    """Verify generate_composite_signals produces exactly the 7 expected composite signals."""
+    """Verify generate_composite_signals produces exactly the expected composite signals."""
     df = make_synthetic_ohlcv(250)
     intermediate = generate_all_intermediate(df)
     res = generate_composite_signals(df, intermediate)
 
-    assert len(EXPECTED_COMPOSITE_SIGNALS) == 7
+    assert len(EXPECTED_COMPOSITE_SIGNALS) == 8
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 7
+    assert len(res.columns) == 8
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_COMPOSITE_SIGNALS:
@@ -129,7 +122,7 @@ def test_composite_signals_without_intermediate():
     df = make_synthetic_ohlcv(100)
     res = generate_composite_signals(df, None)
 
-    assert len(res.columns) == 7
+    assert len(res.columns) == 8
     assert len(res) == 100
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns
@@ -144,7 +137,7 @@ def test_composite_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 7
+    assert len(res.columns) == 8
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -160,7 +153,7 @@ def test_composite_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 7
+    assert len(res.columns) == 8
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -174,7 +167,7 @@ def test_composite_signals_normalization():
     res = generate_composite_signals(df_upper, None)
 
     assert len(res) == 50
-    assert len(res.columns) == 7
+    assert len(res.columns) == 8
 
 
 def test_composite_signals_missing_columns():

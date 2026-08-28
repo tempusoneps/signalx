@@ -6,6 +6,7 @@ import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.volatility import (
+    VOLATILITY_SIGNAL_COLUMNS,
     _calc_atr_trailing_stop,
     _calc_bb_bounce,
     _calc_chaikin_volatility,
@@ -42,36 +43,18 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_VOLATILITY_SIGNALS = [
-    "vol_bb_breakout_20_20_signal",
-    "vol_bb_bounce_20_20_signal",
-    "vol_bb_breakout_50_25_signal",
-    "vol_bb_bounce_50_25_signal",
-    "vol_bb_pct_b_reversal_20_signal",
-    "vol_bb_pct_b_reversal_50_signal",
-    "vol_donchian_breakout_10_signal",
-    "vol_donchian_breakout_20_signal",
-    "vol_donchian_breakout_55_signal",
-    "vol_keltner_breakout_20_15_signal",
-    "vol_keltner_breakout_20_20_signal",
-    "vol_ttm_squeeze_signal",
-    "vol_bb_bandwidth_expansion_signal",
-    "vol_atr_trailing_stop_2x_signal",
-    "vol_atr_trailing_stop_3x_signal",
-    "vol_chaikin_volatility_surge_signal",
-    "vol_hv_ratio_breakout_10_30_signal",
-]
+EXPECTED_VOLATILITY_SIGNALS = VOLATILITY_SIGNAL_COLUMNS
 
 
 def test_volatility_signals_all_17_columns_present():
-    """Verify generate_volatility_signals produces exactly the 17 expected volatility signals."""
+    """Verify generate_volatility_signals produces exactly the expected volatility signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volatility_signals(df)
 
-    assert len(EXPECTED_VOLATILITY_SIGNALS) == 17
+    assert len(EXPECTED_VOLATILITY_SIGNALS) == 32
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 17
+    assert len(res.columns) == 32
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLATILITY_SIGNALS:
@@ -114,7 +97,7 @@ def test_volatility_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 17
+    assert len(res.columns) == 32
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -129,7 +112,7 @@ def test_volatility_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 17
+    assert len(res.columns) == 32
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -149,7 +132,7 @@ def test_volatility_signals_normalization():
     res = generate_volatility_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 17
+    assert len(res.columns) == 32
 
 
 def test_volatility_signals_missing_columns():
