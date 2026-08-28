@@ -21,6 +21,12 @@ VOLUME_SIGNAL_COLUMNS = [
     "volume_adl_ma_cross_signal",
     "volume_force_index_13_signal",
     "volume_eom_zero_14_signal",
+    "volume_vsa_confirmation_20_signal",
+    "volume_price_confirmation_20_signal",
+    "volume_vpt_divergence_5_signal",
+    "volume_trend_3_bar_signal",
+    "volume_price_divergence_signal",
+    "volume_amv_cross_20_signal",
 ]
 
 
@@ -198,8 +204,122 @@ def _calc_volume_spike_direction(
     return pd.Series(res, index=volume.index, dtype=str)
 
 
+def _calc_vsa_confirmation(
+    open_p: pd.Series, close: pd.Series, volume: pd.Series, window: int = 20
+) -> pd.Series:
+    """Calculate Volume Spread Analysis (VSA) confirmation (> 1.2x SMA20 Volume)."""
+    vol_sma = volume.rolling(window, min_periods=5).mean().to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(v) & ~np.isnan(vol_sma) & ~np.isnan(o) & ~np.isnan(c)
+    vol_surge = valid & (v > (1.2 * vol_sma))
+    bull = vol_surge & (c > o)
+    bear = vol_surge & (c < o)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_volume_price_confirmation(
+    close: pd.Series, volume: pd.Series, window: int = 20
+) -> pd.Series:
+    """Calculate Volume Price Confirmation (Volume > SMA20 with directional close)."""
+    vol_sma = volume.rolling(window, min_periods=5).mean().to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    c1 = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(v) & ~np.isnan(vol_sma) & ~np.isnan(c) & ~np.isnan(c1)
+    has_vol = valid & (v > vol_sma)
+    bull = has_vol & (c > c1)
+    bear = has_vol & (c < c1)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_vpt_divergence(
+    high: pd.Series, low: pd.Series, vpt: pd.Series, lookback: int = 5
+) -> pd.Series:
+    """Calculate 5-bar regular Volume Price Trend (VPT) divergence."""
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = vpt.to_numpy(dtype=float, na_value=np.nan)
+
+    l_prev = low.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+    h_prev = high.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+    v_prev = vpt.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(l_arr) & ~np.isnan(v_arr) & ~np.isnan(l_prev) & ~np.isnan(v_prev)
+    bull = valid & (l_arr < l_prev) & (v_arr > v_prev)
+    bear = valid & (h_arr > h_prev) & (v_arr < v_prev)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=low.index, dtype=str
+    )
+
+
+def _calc_volume_trend(volume: pd.Series) -> pd.Series:
+    """Calculate 3-bar Volume Trend (expansion vs contraction)."""
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    v1 = volume.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    v2 = volume.shift(2).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(v) & ~np.isnan(v1) & ~np.isnan(v2)
+    bull = valid & (v > v1) & (v1 > v2)
+    bear = valid & (v < v1) & (v1 < v2)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=volume.index, dtype=str
+    )
+
+
+def _calc_volume_price_divergence(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """Calculate Volume-Price Divergence (absorption vs churn)."""
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    c1 = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    v1 = volume.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(c) & ~np.isnan(c1) & ~np.isnan(v) & ~np.isnan(v1)
+    bull = valid & (c < c1) & (v > v1)
+    bear = valid & (c > c1) & (v > v1)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_amv(close: pd.Series, volume: pd.Series, length: int = 20) -> pd.Series:
+    """Calculate Adaptive Moving Volume (AMV) cross signal."""
+    pv = close * volume
+    vwap_roll = pv.rolling(length, min_periods=5).sum() / volume.rolling(
+        length, min_periods=5
+    ).sum().replace(0, np.nan)
+    return _crossover_signal(close, vwap_roll)
+
+
 def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 12 standardized volume & order flow signals from normalized OHLCV data.
+    """Generate all 18 volume, flow, and VWAP signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -211,20 +331,20 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 12 columns ending with '_signal', with values in
+        DataFrame containing 18 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
-    signals = pd.DataFrame(index=df_norm.index)
 
     with GroupProgressBar(
         "Volume Signals", total=len(VOLUME_SIGNAL_COLUMNS), enabled=show_progress
     ) as pbar:
-        if df_norm.empty:
-            for col in VOLUME_SIGNAL_COLUMNS:
-                signals[col] = pd.Series(dtype=str)
+        if len(df_norm) == 0:
             pbar.update(len(VOLUME_SIGNAL_COLUMNS))
-            return signals
+            return pd.DataFrame(
+                {col: pd.Series(dtype=str, index=df.index) for col in VOLUME_SIGNAL_COLUMNS},
+                index=df.index,
+            )
 
         open_p = df_norm["open"]
         high = df_norm["high"]
@@ -232,7 +352,9 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         close = df_norm["close"]
         volume = df_norm["volume"]
 
-        # 1. On-Balance Volume (OBV) crosses its 20-period EMA (1)
+        signals = pd.DataFrame(index=df_norm.index)
+
+        # 1. On-Balance Volume (OBV) crosses 20-period EMA of OBV (1)
         obv = ta.volume.OnBalanceVolumeIndicator(
             close=close, volume=volume, fillna=False
         ).on_balance_volume()
@@ -240,30 +362,29 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         signals["volume_obv_ema_cross_20_signal"] = _crossover_signal(obv, obv_ema20)
         pbar.update(1)
 
-        # 2. Chaikin Money Flow (20 period) zero cross and +/-0.05 threshold signals (2)
-        cmf20 = ta.volume.ChaikinMoneyFlowIndicator(
+        # 2. Chaikin Money Flow (CMF, 20-period) zero-line and threshold crosses (2)
+        cmf = ta.volume.ChaikinMoneyFlowIndicator(
             high=high, low=low, close=close, volume=volume, window=20, fillna=False
         ).chaikin_money_flow()
         signals["volume_cmf_zero_cross_20_signal"] = _crossover_signal(
-            cmf20, pd.Series(0.0, index=df_norm.index)
+            cmf, pd.Series(0.0, index=df_norm.index)
         )
         signals["volume_cmf_threshold_cross_20_signal"] = _bound_signal(
-            cmf20, lower=-0.05, upper=0.05, buy_below=False
+            cmf, -0.05, 0.05, buy_below=False
         )
         pbar.update(2)
 
-        # 3. Rolling VWAP price crossovers (20, 50, 100) (3)
-        vwap20 = _calc_rolling_vwap(high, low, close, volume, window=20)
+        # 3. Rolling VWAP crossovers (20, 50, 100 periods) (3)
+        vwap20 = _calc_rolling_vwap(high, low, close, volume, 20)
+        vwap50 = _calc_rolling_vwap(high, low, close, volume, 50)
+        vwap100 = _calc_rolling_vwap(high, low, close, volume, 100)
+
         signals["volume_vwap_cross_20_signal"] = _crossover_signal(close, vwap20)
-
-        vwap50 = _calc_rolling_vwap(high, low, close, volume, window=50)
         signals["volume_vwap_cross_50_signal"] = _crossover_signal(close, vwap50)
-
-        vwap100 = _calc_rolling_vwap(high, low, close, volume, window=100)
         signals["volume_vwap_cross_100_signal"] = _crossover_signal(close, vwap100)
         pbar.update(3)
 
-        # 4. Rolling 20-period VWAP standard deviation band reversal (1)
+        # 4. Rolling VWAP Standard Deviation Bands Reversal (20 period, 2.0 std) (1)
         _, vwap20_lband, vwap20_hband = _calc_vwap_bands(
             high, low, close, volume, window=20, num_std=2.0
         )
@@ -272,7 +393,7 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         )
         pbar.update(1)
 
-        # 5. Volume Spike (>2.0x 20-SMA) combined with directional candle body (1)
+        # 5. Volume Spike Direction (Volume > 2.0 * 20-period SMA(Volume)) (1)
         signals["volume_spike_direction_20_signal"] = _calc_volume_spike_direction(
             open_p, close, volume, window=20, threshold=2.0
         )
@@ -310,6 +431,34 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         signals["volume_eom_zero_14_signal"] = _crossover_signal(
             eom14, pd.Series(0.0, index=df_norm.index)
         )
+        pbar.update(1)
+
+        # 10. Volume Spread Analysis (VSA) confirmation (1)
+        signals["volume_vsa_confirmation_20_signal"] = _calc_vsa_confirmation(
+            open_p, close, volume, window=20
+        )
+        pbar.update(1)
+
+        # 11. Volume Price Confirmation (1)
+        signals["volume_price_confirmation_20_signal"] = _calc_volume_price_confirmation(
+            close, volume, window=20
+        )
+        pbar.update(1)
+
+        # 12. VPT 5-bar Divergence (1)
+        signals["volume_vpt_divergence_5_signal"] = _calc_vpt_divergence(high, low, pvt, lookback=5)
+        pbar.update(1)
+
+        # 13. Volume 3-bar Trend (1)
+        signals["volume_trend_3_bar_signal"] = _calc_volume_trend(volume)
+        pbar.update(1)
+
+        # 14. Volume-Price Divergence (1)
+        signals["volume_price_divergence_signal"] = _calc_volume_price_divergence(close, volume)
+        pbar.update(1)
+
+        # 15. AMV Cross (1)
+        signals["volume_amv_cross_20_signal"] = _calc_amv(close, volume, length=20)
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index

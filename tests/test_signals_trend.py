@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
-from signalx.signals.trend import generate_trend_signals
+from signalx.signals.trend import TREND_SIGNAL_COLUMNS, generate_trend_signals
 
 
 def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
@@ -29,49 +29,18 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_TREND_SIGNALS = [
-    "trend_sma_cross_5_20_signal",
-    "trend_sma_cross_10_50_signal",
-    "trend_sma_cross_20_50_signal",
-    "trend_golden_cross_50_200_signal",
-    "trend_ema_cross_9_21_signal",
-    "trend_ema_cross_12_26_signal",
-    "trend_ema_cross_50_200_signal",
-    "trend_dema_cross_10_30_signal",
-    "trend_tema_cross_10_30_signal",
-    "trend_hma_cross_9_21_signal",
-    "trend_vwma_cross_10_30_signal",
-    "trend_price_above_sma20_signal",
-    "trend_price_above_ema50_signal",
-    "trend_price_above_ema200_signal",
-    "trend_macd_cross_signal",
-    "trend_macd_zero_cross_signal",
-    "trend_macd_hist_reversal_signal",
-    "trend_macd_fast_cross_signal",
-    "trend_macd_slow_cross_signal",
-    "trend_supertrend_10_3_signal",
-    "trend_supertrend_7_2_signal",
-    "trend_supertrend_14_4_signal",
-    "trend_psar_reversal_signal",
-    "trend_aroon_cross_14_signal",
-    "trend_aroon_cross_25_signal",
-    "trend_adx_dmi_14_signal",
-    "trend_adx_dmi_28_signal",
-    "trend_ichimoku_tk_cross_signal",
-    "trend_ichimoku_cloud_breakout_signal",
-    "trend_vortex_cross_14_signal",
-]
+EXPECTED_TREND_SIGNALS = TREND_SIGNAL_COLUMNS
 
 
 def test_trend_signals_all_30_columns_present():
-    """Verify generate_trend_signals produces exactly the 30 expected trend signals."""
+    """Verify generate_trend_signals produces exactly the expected trend signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_trend_signals(df)
 
-    assert len(EXPECTED_TREND_SIGNALS) == 30
+    assert len(EXPECTED_TREND_SIGNALS) == 41
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 30
+    assert len(res.columns) == 41
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_TREND_SIGNALS:
@@ -114,7 +83,7 @@ def test_trend_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 30
+    assert len(res.columns) == 41
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -129,7 +98,7 @@ def test_trend_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 30
+    assert len(res.columns) == 41
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -143,7 +112,7 @@ def test_trend_signals_normalization():
     res = generate_trend_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 30
+    assert len(res.columns) == 41
 
 
 def test_trend_signals_missing_columns():

@@ -22,6 +22,11 @@ STATISTICAL_SIGNAL_COLUMNS = [
     "stat_rolling_quantile_extremes_20_signal",
     "stat_linreg_slope_14_signal",
     "stat_linreg_price_cross_30_signal",
+    "stat_ma_stretch_zscore_20_signal",
+    "stat_hurst_proxy_signal",
+    "stat_range_mid_reversion_10_signal",
+    "stat_price_acceleration_signal",
+    "stat_mean_distance_5pct_signal",
 ]
 
 
@@ -321,8 +326,109 @@ def _calc_linreg_price_cross(close: pd.Series, length: int = 30) -> pd.Series:
     return _crossover_signal(close, linreg_s)
 
 
+def _calc_ma_stretch(close: pd.Series, window: int = 20) -> pd.Series:
+    """Calculate Moving Average Stretch (Z-Score > 2 or < -2)."""
+    mean = close.rolling(window=window, min_periods=window // 2).mean()
+    std = close.rolling(window=window, min_periods=window // 2).std()
+    z = (close - mean) / std.replace(0, np.nan)
+
+    z_arr = z.to_numpy(dtype=float, na_value=np.nan)
+    valid = ~np.isnan(z_arr)
+    bull = valid & (z_arr < -2.0)
+    bear = valid & (z_arr > 2.0)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_hurst_proxy(close: pd.Series, window: int = 50) -> pd.Series:
+    """Calculate rolling Hurst Exponent proxy (< 0.5 mean-reversion, > 0.5 trending)."""
+    diff1 = close.diff(1)
+    diff2 = close.diff(2)
+
+    var1 = diff1.rolling(window, min_periods=window // 2).var()
+    var2 = diff2.rolling(window, min_periods=window // 2).var()
+
+    ratio = var2 / (2.0 * var1 + 1e-9).replace(0, np.nan)
+    hurst = 0.5 * np.log2(ratio.clip(lower=1e-4))
+
+    h_arr = hurst.to_numpy(dtype=float, na_value=np.nan)
+    valid = ~np.isnan(h_arr)
+    bull = valid & (h_arr < 0.5)
+    bear = valid & (h_arr > 0.5)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_range_mid_reversion(
+    high: pd.Series, low: pd.Series, close: pd.Series, window: int = 10
+) -> pd.Series:
+    """Calculate Range Midpoint Reversion signal."""
+    h_max = high.rolling(window, min_periods=2).max().to_numpy(dtype=float, na_value=np.nan)
+    l_min = low.rolling(window, min_periods=2).min().to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(c) & ~np.isnan(h_max) & ~np.isnan(l_min)
+    mid = (h_max + l_min) / 2.0
+
+    bull = valid & (c < mid)
+    bear = valid & (c > mid)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_price_acceleration(close: pd.Series) -> pd.Series:
+    """Calculate 1-bar Price Change Acceleration."""
+    delta = close.diff().to_numpy(dtype=float, na_value=np.nan)
+    delta1 = close.diff().shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(delta) & ~np.isnan(delta1)
+    bull = valid & (delta > delta1)
+    bear = valid & (delta < delta1)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_mean_distance(close: pd.Series, window: int = 20, pct: float = 0.05) -> pd.Series:
+    """Calculate Mean Distance (> 5% deviation from rolling SMA)."""
+    sma = (
+        close.rolling(window, min_periods=window // 2).mean().to_numpy(dtype=float, na_value=np.nan)
+    )
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(c) & ~np.isnan(sma)
+    bull = valid & (c < (sma * (1.0 - pct)))
+    bear = valid & (c > (sma * (1.0 + pct)))
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
 def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 11 standardized statistical & mean reversion signals from normalized OHLCV data.
+    """Generate all 16 standardized statistical & mean reversion signals from normalized OHLCV data.
 
     Parameters
     ----------
@@ -334,7 +440,7 @@ def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 11 columns ending with '_signal', with values in
+        DataFrame containing 16 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -390,4 +496,33 @@ def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) 
         signals["stat_linreg_price_cross_30_signal"] = _calc_linreg_price_cross(close, length=30)
         pbar.update(1)
 
-        return signals
+        # 8. MA Stretch Z-Score (20) (1)
+        signals["stat_ma_stretch_zscore_20_signal"] = _calc_ma_stretch(close, window=20)
+        pbar.update(1)
+
+        # 9. Hurst Exponent Proxy (1)
+        signals["stat_hurst_proxy_signal"] = _calc_hurst_proxy(close, window=50)
+        pbar.update(1)
+
+        # 10. Range Midpoint Reversion (10) (1)
+        signals["stat_range_mid_reversion_10_signal"] = _calc_range_mid_reversion(
+            high, low, close, window=10
+        )
+        pbar.update(1)
+
+        # 11. Price Acceleration (1)
+        signals["stat_price_acceleration_signal"] = _calc_price_acceleration(close)
+        pbar.update(1)
+
+        # 12. Mean Distance 5% (1)
+        signals["stat_mean_distance_5pct_signal"] = _calc_mean_distance(close, window=20, pct=0.05)
+        pbar.update(1)
+
+        # Ensure all columns are present, filled with NONE, and matching index
+        for col in STATISTICAL_SIGNAL_COLUMNS:
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
+
+        return signals[STATISTICAL_SIGNAL_COLUMNS]

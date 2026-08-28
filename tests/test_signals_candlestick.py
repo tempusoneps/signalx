@@ -46,34 +46,19 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_CANDLESTICK_SIGNALS = [
-    "cdl_engulfing_signal",
-    "cdl_hammer_star_signal",
-    "cdl_pinbar_signal",
-    "cdl_marubozu_signal",
-    "cdl_harami_signal",
-    "cdl_inside_bar_breakout_signal",
-    "cdl_outside_bar_signal",
-    "cdl_doji_reversal_signal",
-    "cdl_three_soldiers_crows_signal",
-    "cdl_consecutive_3_signal",
-    "cdl_consecutive_5_signal",
-    "cdl_morning_evening_star_signal",
-    "cdl_piercing_darkcloud_signal",
-    "cdl_tweezer_tops_bottoms_signal",
-]
+EXPECTED_CANDLESTICK_SIGNALS = CANDLESTICK_SIGNAL_COLUMNS
 
 
 def test_candlestick_signals_all_14_columns_present():
-    """Verify generate_candlestick_signals produces exactly the 14 expected candlestick signals."""
+    """Verify generate_candlestick_signals produces exactly the expected candlestick signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_candlestick_signals(df)
 
-    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 14
+    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 27
     assert EXPECTED_CANDLESTICK_SIGNALS == CANDLESTICK_SIGNAL_COLUMNS
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 14
+    assert len(res.columns) == 27
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_CANDLESTICK_SIGNALS:
@@ -117,7 +102,7 @@ def test_candlestick_signals_short_dataframe():
 
         assert isinstance(res, pd.DataFrame)
         assert len(res) == n
-        assert len(res.columns) == 14
+        assert len(res.columns) == len(CANDLESTICK_SIGNAL_COLUMNS)
 
         for col in res.columns:
             assert not res[col].isna().any()
@@ -132,7 +117,7 @@ def test_candlestick_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 14
+    assert len(res.columns) == len(CANDLESTICK_SIGNAL_COLUMNS)
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -152,7 +137,7 @@ def test_candlestick_signals_normalization():
     res = generate_candlestick_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 14
+    assert len(res.columns) == len(CANDLESTICK_SIGNAL_COLUMNS)
 
 
 def test_candlestick_signals_missing_columns():
@@ -176,7 +161,7 @@ def test_candlestick_signals_flat_candles():
     res = generate_candlestick_signals(df_flat)
 
     assert len(res) == 20
-    assert len(res.columns) == 14
+    assert len(res.columns) == len(CANDLESTICK_SIGNAL_COLUMNS)
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())

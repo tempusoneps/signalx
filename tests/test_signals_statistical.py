@@ -6,6 +6,7 @@ import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.statistical import (
+    STATISTICAL_SIGNAL_COLUMNS,
     _calc_chop_regime,
     _calc_ker,
     _calc_linreg_price_cross,
@@ -45,30 +46,18 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
     )
 
 
-EXPECTED_STATISTICAL_SIGNALS = [
-    "stat_price_zscore_10_signal",
-    "stat_price_zscore_20_signal",
-    "stat_price_zscore_50_signal",
-    "stat_price_zscore_100_signal",
-    "stat_return_zscore_20_signal",
-    "stat_ker_trend_filter_10_signal",
-    "stat_ker_trend_filter_20_signal",
-    "stat_chop_regime_14_signal",
-    "stat_rolling_quantile_extremes_20_signal",
-    "stat_linreg_slope_14_signal",
-    "stat_linreg_price_cross_30_signal",
-]
+EXPECTED_STATISTICAL_SIGNALS = STATISTICAL_SIGNAL_COLUMNS
 
 
 def test_statistical_signals_all_11_columns_present():
-    """Verify generate_statistical_signals produces exactly the 11 expected statistical signals."""
+    """Verify generate_statistical_signals produces exactly the expected statistical signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_statistical_signals(df)
 
-    assert len(EXPECTED_STATISTICAL_SIGNALS) == 11
+    assert len(EXPECTED_STATISTICAL_SIGNALS) == 16
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 11
+    assert len(res.columns) == 16
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_STATISTICAL_SIGNALS:
@@ -111,7 +100,7 @@ def test_statistical_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 11
+    assert len(res.columns) == 16
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -126,7 +115,7 @@ def test_statistical_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 11
+    assert len(res.columns) == 16
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -140,7 +129,7 @@ def test_statistical_signals_normalization():
     res = generate_statistical_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 11
+    assert len(res.columns) == 16
 
 
 def test_statistical_signals_missing_columns():

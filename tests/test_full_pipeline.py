@@ -50,7 +50,7 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 
 
 def test_full_pipeline_produces_all_114_signals():
-    """Test end-to-end signal generation produces all 114 registered signal columns."""
+    """Test end-to-end signal generation produces all registered signal columns."""
     df = make_synthetic_ohlcv(150)
     res = signalx.generate_signals(df)
 
@@ -62,7 +62,7 @@ def test_full_pipeline_produces_all_114_signals():
         assert col in res.columns
 
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 114
+    assert len(signal_cols) == len(SIGNAL_CATALOG)
     assert set(signal_cols) == set(SIGNAL_CATALOG.keys())
 
     # Ensure all values belong to valid states
@@ -78,7 +78,7 @@ def test_full_pipeline_sorted_signal_columns():
 
     assert isinstance(signals, pd.DataFrame)
     assert len(signals) == 100
-    assert len(signals.columns) == 114
+    assert len(signals.columns) == len(SIGNAL_CATALOG)
     assert list(signals.columns) == sorted(signals.columns)
     assert all(c.endswith("_signal") for c in signals.columns)
 
@@ -89,14 +89,14 @@ def test_full_pipeline_drop_ohlcv():
 
     # 1. drop_ohlcv=False (default)
     res_default = signalx.generate_signals(df, drop_ohlcv=False)
-    assert len(res_default.columns) == 5 + 114
+    assert len(res_default.columns) == 5 + len(SIGNAL_CATALOG)
     assert "close" in res_default.columns
 
     # 2. drop_ohlcv=True without date column
     res_dropped = signalx.generate_signals(df, drop_ohlcv=True)
     assert "close" not in res_dropped.columns
     assert "open" not in res_dropped.columns
-    assert len(res_dropped.columns) == 114
+    assert len(res_dropped.columns) == len(SIGNAL_CATALOG)
     assert all(c.endswith("_signal") for c in res_dropped.columns)
 
 
@@ -111,7 +111,7 @@ def test_full_pipeline_with_date_columns():
     assert "Date" in res_false.columns
     assert "extra_metadata" in res_false.columns
     assert "close" in res_false.columns
-    assert len([c for c in res_false.columns if c.endswith("_signal")]) == 114
+    assert len([c for c in res_false.columns if c.endswith("_signal")]) == len(SIGNAL_CATALOG)
 
     # drop_ohlcv=True should preserve Date column but drop OHLCV and extra non-date columns
     res_true = signalx.generate_signals(df, drop_ohlcv=True)
@@ -120,8 +120,8 @@ def test_full_pipeline_with_date_columns():
     assert "open" not in res_true.columns
     assert "extra_metadata" not in res_true.columns
     signal_cols = [c for c in res_true.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 114
-    assert len(res_true.columns) == 115
+    assert len(signal_cols) == len(SIGNAL_CATALOG)
+    assert len(res_true.columns) == 1 + len(SIGNAL_CATALOG)
 
 
 def test_full_pipeline_datetime_index_preserved():
@@ -157,7 +157,7 @@ def test_full_pipeline_large_dataset_performance():
     elapsed = time.time() - start_time
 
     assert len(res) == 1200
-    assert len([c for c in res.columns if c.endswith("_signal")]) == 114
+    assert len([c for c in res.columns if c.endswith("_signal")]) == len(SIGNAL_CATALOG)
     # Execution should be rapid (under 5 seconds)
     assert elapsed < 5.0, f"Pipeline took too long: {elapsed:.2f}s"
 
@@ -168,7 +168,7 @@ def test_full_pipeline_short_dataframe():
     res = signalx.generate_signals(df)
     assert len(res) == 10
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 114
+    assert len(signal_cols) == len(SIGNAL_CATALOG)
     for col in signal_cols:
         assert set(res[col].unique()).issubset(ALL_SIGNAL_STATES)
 
@@ -179,7 +179,7 @@ def test_full_pipeline_empty_dataframe():
     res = signalx.generate_signals(df)
     assert len(res) == 0
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 114
+    assert len(signal_cols) == len(SIGNAL_CATALOG)
 
 
 def test_full_pipeline_missing_columns_validation():
@@ -195,7 +195,7 @@ def test_full_pipeline_uppercase_column_normalization():
     df.columns = [c.upper() for c in df.columns]
     res = signalx.generate_signals(df)
     assert len(res) == 60
-    assert len([c for c in res.columns if c.endswith("_signal")]) == 114
+    assert len([c for c in res.columns if c.endswith("_signal")]) == len(SIGNAL_CATALOG)
 
 
 def test_signalx_package_exports():
@@ -222,4 +222,4 @@ def test_full_pipeline_with_progress_bar():
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 50
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 114
+    assert len(signal_cols) == len(SIGNAL_CATALOG)
