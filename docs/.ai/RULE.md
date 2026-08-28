@@ -4,10 +4,12 @@ This document establishes the mandatory architectural rules and invariant constr
 
 ---
 
-## Rule 1: Suffix Rule (`_signal`)
+## Rule 1: Suffix & Naming Rule (`_signal`)
 - **Requirement**: 100% of generated signal column names must end with the postfix `_signal`.
-- **Format**: `<category>_<indicator_name>_<params>_signal`
-- **Rationale**: Enables seamless regular expression matching (e.g., `df.filter(regex=r"_signal$")`), prevents name collisions with raw price/indicator columns, and allows deterministic pipeline operations.
+- **Formats**:
+  - **Coded Format (Default)**: `<CODE>_signal` where `<CODE>` is a 3-letter uppercase category code followed by a 3-digit zero-padded index (e.g., `TRD001_signal`, `MOM001_signal`, `CMP008_signal`).
+  - **Semantic Format**: `<category>_<indicator_name>_<params>_signal` (e.g., `trend_sma_cross_5_20_signal`, `comp_master_ensemble_signal`).
+- **Rationale**: Enables seamless regular expression matching (e.g., `df.filter(regex=r"_signal$")` or `df.filter(regex=r"^TRD\d{3}_signal$")`), prevents name collisions with raw price/indicator columns, and allows deterministic pipeline operations.
 
 ---
 
@@ -33,6 +35,8 @@ This document establishes the mandatory architectural rules and invariant constr
 ## Rule 4: Unified Single-Pipeline Execution
 - **Requirement**: Calling `signalx.generate_signals(df)` must run all 7 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `statistical`, `composite`) without requiring manual multi-stage wiring.
 - **Behavior**:
+  - `naming="code"` (default): Returns compact coded column names (`TRD001_signal` ... `CMP008_signal`).
+  - `naming="semantic"`: Returns verbose descriptive column names (`trend_sma_cross_5_20_signal` ...).
   - `drop_ohlcv=False` (default): Appends all signal columns to the original DataFrame while preserving the original index and columns.
   - `drop_ohlcv=True`: Returns only the signal columns (along with Date/Datetime index/columns if present).
 

@@ -18,13 +18,13 @@ The core mission of `signalx` is to provide quantitative analysts, machine learn
 
 2. **Column Naming Postfix**:
    100% of generated signal columns must end with `_signal`.
-   Naming schema: `<category>_<indicator_name>_<params>_signal`.
+   Naming schema: `<CODE>_signal` (e.g. `TRD001_signal`) by default, or `<category>_<indicator_name>_<params>_signal` in semantic mode.
 
 3. **Zero Future Leakage (No Lookahead Bias)**:
    Calculations at bar $t$ must strictly depend only on information available at or before bar $t$. Shift operations or forward-looking rollings are strictly forbidden in signal calculation logic.
 
 4. **Single Unified Pipeline**:
-   `signalx.generate_signals(df)` executes all 7 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `statistical`, `composite`) with zero configuration required.
+   `signalx.generate_signals(df)` executes all 7 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `statistical`, `composite`) with zero configuration required (defaults to coded format `naming="code"`).
 
 5. **Sub-second Test Suite Execution**:
    All unit and integration tests must run against lightweight synthetic datasets (< 500 rows) to keep the entire test suite fast and deterministic.

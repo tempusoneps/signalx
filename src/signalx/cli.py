@@ -55,7 +55,12 @@ def handle_generate(args: argparse.Namespace) -> None:
     print(f"Loaded {len(df)} rows from {input_path}")
 
     show_progress = not getattr(args, "no_progress", False)
-    signals_df = generate_signals(df, drop_ohlcv=args.drop_ohlcv, show_progress=show_progress)
+    signals_df = generate_signals(
+        df,
+        drop_ohlcv=args.drop_ohlcv,
+        show_progress=show_progress,
+        naming=args.naming,
+    )
     saved_path = save_dataframe(signals_df, output_path)
     print(
         f"Successfully generated signals. Output saved to {saved_path} "
@@ -138,11 +143,18 @@ def handle_list(args: argparse.Namespace) -> None:
         print(f"Category: {cat.upper()} ({len(signals)} signals)")
         print(f"{'=' * 80}")
         for sig in signals:
-            print(f"  • {sig.name} [{sig.library}]")
-            print(f"    Description: {sig.description}")
-            print(f"    Buy Trigger: {sig.buy_trigger}")
+            print(f"  [{sig.code}] ({sig.name})")
+            print(f"    Description : {sig.description}")
+            print(f"    Library     : {sig.library}")
+            print(f"    Buy Trigger : {sig.buy_trigger}")
             print(f"    Sell Trigger: {sig.sell_trigger}")
             print()
+
+
+_cmd_generate = handle_generate
+_cmd_inspect = handle_inspect
+_cmd_stats = handle_stats
+_cmd_list = handle_list
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -175,6 +187,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--drop-ohlcv",
         action="store_true",
         help="Drop OHLCV columns and retain only date and signal columns.",
+    )
+    gen_parser.add_argument(
+        "--naming",
+        type=str,
+        choices=["code", "semantic"],
+        default="code",
+        help="Signal naming convention: code (e.g. TRD001_signal) or semantic (e.g. trend_sma_cross_5_20_signal). Default: code.",
     )
     gen_parser.add_argument(
         "--stats-report",
