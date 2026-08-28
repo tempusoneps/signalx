@@ -213,3 +213,13 @@ def test_signalx_package_exports():
     assert callable(generate_candlestick_signals)
     assert callable(generate_statistical_signals)
     assert callable(generate_composite_signals)
+
+
+def test_full_pipeline_with_progress_bar():
+    """Test pipeline execution with show_progress=True."""
+    df = make_synthetic_ohlcv(50)
+    res = signalx.generate_signals(df, show_progress=True)
+    assert isinstance(res, pd.DataFrame)
+    assert len(res) == 50
+    signal_cols = [c for c in res.columns if c.endswith("_signal")]
+    assert len(signal_cols) == 114

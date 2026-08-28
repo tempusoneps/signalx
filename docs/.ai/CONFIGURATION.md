@@ -32,11 +32,12 @@ This document defines the configuration options, parameters, and input/output da
 
 ## 2. Python API Parameters
 
-### `signalx.generate_signals(df, drop_ohlcv=False)`
+### `signalx.generate_signals(df, drop_ohlcv=False, show_progress=False)`
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
 | `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 114 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 114 signal columns. |
+| `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
 
 **Return Value**: `pandas.DataFrame` containing all 114 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
@@ -49,7 +50,7 @@ This document defines the configuration options, parameters, and input/output da
 ### Subcommand: `generate`
 Extracts all 114 trading signals from an input dataset file.
 ```bash
-signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
+signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress]
 ```
 | Flag | Short | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -57,6 +58,7 @@ signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
 | `--output` | `-o` | `Path` | `datasets/<stem>_signals.parquet` | Destination path for output dataset (Parquet or CSV). |
 | `--drop-ohlcv` | | `flag` | `False` | Drop input OHLCV columns from the output file. |
 | `--stats-report` | | `flag` | `False` | Print JSON signal state distribution summary to stdout. |
+| `--no-progress` | | `flag` | `False` | Disable real-time per-group progress bars. |
 
 ### Subcommand: `inspect`
 Validates and displays summary statistics of an OHLCV dataset.

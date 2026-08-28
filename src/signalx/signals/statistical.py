@@ -7,6 +7,7 @@ import pandas as pd
 import pandas_ta as pta
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 STATISTICAL_SIGNAL_COLUMNS = [
@@ -320,13 +321,15 @@ def _calc_linreg_price_cross(close: pd.Series, length: int = 30) -> pd.Series:
     return _crossover_signal(close, linreg_s)
 
 
-def generate_statistical_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 11 standardized statistical & mean reversion signals from normalized OHLCV data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -337,43 +340,54 @@ def generate_statistical_signals(df: pd.DataFrame) -> pd.DataFrame:
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
-        for col in STATISTICAL_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
+    with GroupProgressBar(
+        "Statistical Signals", total=len(STATISTICAL_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in STATISTICAL_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(STATISTICAL_SIGNAL_COLUMNS))
+            return signals
+
+        close = df_norm["close"]
+        high = df_norm["high"]
+        low = df_norm["low"]
+
+        # 1. Price Z-Scores (10, 20, 50, 100) (4)
+        signals["stat_price_zscore_10_signal"] = _calc_zscore(close, window=10)
+        signals["stat_price_zscore_20_signal"] = _calc_zscore(close, window=20)
+        signals["stat_price_zscore_50_signal"] = _calc_zscore(close, window=50)
+        signals["stat_price_zscore_100_signal"] = _calc_zscore(close, window=100)
+        pbar.update(4)
+
+        # 2. Return Z-Score (20) (1)
+        returns = close.pct_change()
+        signals["stat_return_zscore_20_signal"] = _calc_zscore(returns, window=20)
+        pbar.update(1)
+
+        # 3. Kaufman Efficiency Ratio Trend Filters (10, 20) (2)
+        signals["stat_ker_trend_filter_10_signal"] = _calc_ker(close, length=10, threshold=0.6)
+        signals["stat_ker_trend_filter_20_signal"] = _calc_ker(close, length=20, threshold=0.6)
+        pbar.update(2)
+
+        # 4. Choppiness Index Regime (14) (1)
+        signals["stat_chop_regime_14_signal"] = _calc_chop_regime(
+            high=high, low=low, close=close, length=14
+        )
+        pbar.update(1)
+
+        # 5. Rolling Quantile Extremes (20) (1)
+        signals["stat_rolling_quantile_extremes_20_signal"] = _calc_rolling_quantile_extremes(
+            close, window=20, lower_q=0.05, upper_q=0.95
+        )
+        pbar.update(1)
+
+        # 6. Linear Regression Slope (14) (1)
+        signals["stat_linreg_slope_14_signal"] = _calc_linreg_slope(close, length=14)
+        pbar.update(1)
+
+        # 7. Linear Regression Price Crossover (30) (1)
+        signals["stat_linreg_price_cross_30_signal"] = _calc_linreg_price_cross(close, length=30)
+        pbar.update(1)
+
         return signals
-
-    close = df_norm["close"]
-    high = df_norm["high"]
-    low = df_norm["low"]
-
-    # 1. Price Z-Scores (10, 20, 50, 100)
-    signals["stat_price_zscore_10_signal"] = _calc_zscore(close, window=10)
-    signals["stat_price_zscore_20_signal"] = _calc_zscore(close, window=20)
-    signals["stat_price_zscore_50_signal"] = _calc_zscore(close, window=50)
-    signals["stat_price_zscore_100_signal"] = _calc_zscore(close, window=100)
-
-    # 2. Return Z-Score (20)
-    returns = close.pct_change()
-    signals["stat_return_zscore_20_signal"] = _calc_zscore(returns, window=20)
-
-    # 3. Kaufman Efficiency Ratio Trend Filters (10, 20)
-    signals["stat_ker_trend_filter_10_signal"] = _calc_ker(close, length=10, threshold=0.6)
-    signals["stat_ker_trend_filter_20_signal"] = _calc_ker(close, length=20, threshold=0.6)
-
-    # 4. Choppiness Index Regime (14)
-    signals["stat_chop_regime_14_signal"] = _calc_chop_regime(
-        high=high, low=low, close=close, length=14
-    )
-
-    # 5. Rolling Quantile Extremes (20)
-    signals["stat_rolling_quantile_extremes_20_signal"] = _calc_rolling_quantile_extremes(
-        close, window=20, lower_q=0.05, upper_q=0.95
-    )
-
-    # 6. Linear Regression Slope (14)
-    signals["stat_linreg_slope_14_signal"] = _calc_linreg_slope(close, length=14)
-
-    # 7. Linear Regression Price Crossover (30)
-    signals["stat_linreg_price_cross_30_signal"] = _calc_linreg_price_cross(close, length=30)
-
-    return signals

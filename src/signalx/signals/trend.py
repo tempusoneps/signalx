@@ -6,6 +6,7 @@ import pandas_ta as pta
 import ta
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 TREND_SIGNAL_COLUMNS = [
@@ -162,13 +163,15 @@ def _price_above_ma(close: pd.Series, ma: pd.Series) -> pd.Series:
     return pd.Series(res, index=close.index, dtype=str)
 
 
-def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 30 standardized trend signals from normalized OHLCV data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -179,61 +182,69 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
-        for col in TREND_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
-        return signals
+    with GroupProgressBar(
+        "Trend Signals", total=len(TREND_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in TREND_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(TREND_SIGNAL_COLUMNS))
+            return signals
 
-    close = df_norm["close"]
-    high = df_norm["high"]
-    low = df_norm["low"]
-    volume = df_norm["volume"]
+        close = df_norm["close"]
+        high = df_norm["high"]
+        low = df_norm["low"]
+        volume = df_norm["volume"]
 
-    # 1. Simple Moving Average (SMA) Crosses
-    sma5 = ta.trend.sma_indicator(close, window=5, fillna=False)
-    sma10 = ta.trend.sma_indicator(close, window=10, fillna=False)
-    sma20 = ta.trend.sma_indicator(close, window=20, fillna=False)
-    sma50 = ta.trend.sma_indicator(close, window=50, fillna=False)
-    sma200 = ta.trend.sma_indicator(close, window=200, fillna=False)
+        # 1. Simple Moving Average (SMA) Crosses (4)
+        sma5 = ta.trend.sma_indicator(close, window=5, fillna=False)
+        sma10 = ta.trend.sma_indicator(close, window=10, fillna=False)
+        sma20 = ta.trend.sma_indicator(close, window=20, fillna=False)
+        sma50 = ta.trend.sma_indicator(close, window=50, fillna=False)
+        sma200 = ta.trend.sma_indicator(close, window=200, fillna=False)
 
-    signals["trend_sma_cross_5_20_signal"] = _crossover_signal(sma5, sma20)
-    signals["trend_sma_cross_10_50_signal"] = _crossover_signal(sma10, sma50)
-    signals["trend_sma_cross_20_50_signal"] = _crossover_signal(sma20, sma50)
-    signals["trend_golden_cross_50_200_signal"] = _crossover_signal(sma50, sma200)
+        signals["trend_sma_cross_5_20_signal"] = _crossover_signal(sma5, sma20)
+        signals["trend_sma_cross_10_50_signal"] = _crossover_signal(sma10, sma50)
+        signals["trend_sma_cross_20_50_signal"] = _crossover_signal(sma20, sma50)
+        signals["trend_golden_cross_50_200_signal"] = _crossover_signal(sma50, sma200)
+        pbar.update(4)
 
-    # 2. Exponential Moving Average (EMA) Crosses
-    ema9 = ta.trend.ema_indicator(close, window=9, fillna=False)
-    ema12 = ta.trend.ema_indicator(close, window=12, fillna=False)
-    ema21 = ta.trend.ema_indicator(close, window=21, fillna=False)
-    ema26 = ta.trend.ema_indicator(close, window=26, fillna=False)
-    ema50 = ta.trend.ema_indicator(close, window=50, fillna=False)
-    ema200 = ta.trend.ema_indicator(close, window=200, fillna=False)
+        # 2. Exponential Moving Average (EMA) Crosses (3)
+        ema9 = ta.trend.ema_indicator(close, window=9, fillna=False)
+        ema12 = ta.trend.ema_indicator(close, window=12, fillna=False)
+        ema21 = ta.trend.ema_indicator(close, window=21, fillna=False)
+        ema26 = ta.trend.ema_indicator(close, window=26, fillna=False)
+        ema50 = ta.trend.ema_indicator(close, window=50, fillna=False)
+        ema200 = ta.trend.ema_indicator(close, window=200, fillna=False)
 
-    signals["trend_ema_cross_9_21_signal"] = _crossover_signal(ema9, ema21)
-    signals["trend_ema_cross_12_26_signal"] = _crossover_signal(ema12, ema26)
-    signals["trend_ema_cross_50_200_signal"] = _crossover_signal(ema50, ema200)
+        signals["trend_ema_cross_9_21_signal"] = _crossover_signal(ema9, ema21)
+        signals["trend_ema_cross_12_26_signal"] = _crossover_signal(ema12, ema26)
+        signals["trend_ema_cross_50_200_signal"] = _crossover_signal(ema50, ema200)
+        pbar.update(3)
 
-    # 3. Advanced Moving Average Crosses (DEMA, TEMA, HMA, VWMA)
-    dema10 = _calc_dema(close, 10)
-    dema30 = _calc_dema(close, 30)
-    signals["trend_dema_cross_10_30_signal"] = _crossover_signal(dema10, dema30)
+        # 3. Advanced Moving Average Crosses (DEMA, TEMA, HMA, VWMA) (4)
+        dema10 = _calc_dema(close, 10)
+        dema30 = _calc_dema(close, 30)
+        signals["trend_dema_cross_10_30_signal"] = _crossover_signal(dema10, dema30)
 
-    tema10 = _calc_tema(close, 10)
-    tema30 = _calc_tema(close, 30)
-    signals["trend_tema_cross_10_30_signal"] = _crossover_signal(tema10, tema30)
+        tema10 = _calc_tema(close, 10)
+        tema30 = _calc_tema(close, 30)
+        signals["trend_tema_cross_10_30_signal"] = _crossover_signal(tema10, tema30)
 
-    hma9 = _calc_hma(close, 9)
-    hma21 = _calc_hma(close, 21)
-    signals["trend_hma_cross_9_21_signal"] = _crossover_signal(hma9, hma21)
+        hma9 = _calc_hma(close, 9)
+        hma21 = _calc_hma(close, 21)
+        signals["trend_hma_cross_9_21_signal"] = _crossover_signal(hma9, hma21)
 
-    vwma10 = _calc_vwma(close, volume, 10)
-    vwma30 = _calc_vwma(close, volume, 30)
-    signals["trend_vwma_cross_10_30_signal"] = _crossover_signal(vwma10, vwma30)
+        vwma10 = _calc_vwma(close, volume, 10)
+        vwma30 = _calc_vwma(close, volume, 30)
+        signals["trend_vwma_cross_10_30_signal"] = _crossover_signal(vwma10, vwma30)
+        pbar.update(4)
 
-    # 4. Price vs Moving Average Positions
-    signals["trend_price_above_sma20_signal"] = _price_above_ma(close, sma20)
-    signals["trend_price_above_ema50_signal"] = _price_above_ma(close, ema50)
-    signals["trend_price_above_ema200_signal"] = _price_above_ma(close, ema200)
+        # 4. Price vs Moving Average Positions (3)
+        signals["trend_price_above_sma20_signal"] = _price_above_ma(close, sma20)
+        signals["trend_price_above_ema50_signal"] = _price_above_ma(close, ema50)
+        signals["trend_price_above_ema200_signal"] = _price_above_ma(close, ema200)
+        pbar.update(3)
 
     # 5. MACD Variants (Standard, Zero Cross, Hist Reversal, Fast, Slow)
     macd_std = ta.trend.MACD(close, window_fast=12, window_slow=26, window_sign=9, fillna=False)
@@ -267,8 +278,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
     signals["trend_macd_slow_cross_signal"] = _crossover_signal(
         macd_slow.macd(), macd_slow.macd_signal()
     )
+    pbar.update(5)
 
-    # 6. SuperTrend Regimes (10/3, 7/2, 14/4)
+    # 6. SuperTrend Regimes (10/3, 7/2, 14/4) (3)
     for length, mult in [(10, 3.0), (7, 2.0), (14, 4.0)]:
         col_name = f"trend_supertrend_{length}_{int(mult)}_signal"
         res_st = np.full(len(df_norm), SignalState.NONE, dtype=object)
@@ -285,8 +297,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
         signals[col_name] = pd.Series(res_st, index=df_norm.index, dtype=str)
+    pbar.update(3)
 
-    # 7. Parabolic SAR Reversal
+    # 7. Parabolic SAR Reversal (1)
     res_psar = np.full(len(df_norm), SignalState.NONE, dtype=object)
     if len(df_norm) >= 2:
         try:
@@ -311,8 +324,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
     signals["trend_psar_reversal_signal"] = pd.Series(res_psar, index=df_norm.index, dtype=str)
+    pbar.update(1)
 
-    # 8. Aroon Cross (14, 25)
+    # 8. Aroon Cross (14, 25) (2)
     for period in [14, 25]:
         col_name = f"trend_aroon_cross_{period}_signal"
         sig_aroon = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
@@ -323,8 +337,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 pass
         signals[col_name] = sig_aroon
+    pbar.update(2)
 
-    # 9. ADX / DMI Directional Strength (14, 28)
+    # 9. ADX / DMI Directional Strength (14, 28) (2)
     for period in [14, 28]:
         col_name = f"trend_adx_dmi_{period}_signal"
         res_adx = np.full(len(df_norm), SignalState.NONE, dtype=object)
@@ -348,8 +363,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 pass
         signals[col_name] = pd.Series(res_adx, index=df_norm.index, dtype=str)
+    pbar.update(2)
 
-    # 10. Ichimoku Kinko Hyo (TK Cross and Cloud Breakout)
+    # 10. Ichimoku Kinko Hyo (TK Cross and Cloud Breakout) (2)
     sig_tk = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
     res_cloud = np.full(len(df_norm), SignalState.NONE, dtype=object)
     if len(df_norm) >= 9:
@@ -382,8 +398,9 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
     signals["trend_ichimoku_cloud_breakout_signal"] = pd.Series(
         res_cloud, index=df_norm.index, dtype=str
     )
+    pbar.update(2)
 
-    # 11. Vortex Indicator Cross (14)
+    # 11. Vortex Indicator Cross (14) (1)
     sig_vortex = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
     if len(df_norm) >= 14:
         try:
@@ -396,6 +413,7 @@ def generate_trend_signals(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
     signals["trend_vortex_cross_14_signal"] = sig_vortex
+    pbar.update(1)
 
     # Ensure all columns are present, filled with NONE, and matching index
     for col in TREND_SIGNAL_COLUMNS:

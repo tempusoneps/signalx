@@ -8,19 +8,24 @@ from signalx.utils import normalize_ohlcv
 DATE_COLUMN_NAMES = {"date", "datetime", "timestamp", "time"}
 
 
-def generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False) -> pd.DataFrame:
+def generate_signals(
+    df: pd.DataFrame,
+    drop_ohlcv: bool = False,
+    show_progress: bool = False,
+) -> pd.DataFrame:
     """Generate 100+ standardized trading signal columns from an OHLCV dataset.
 
     Parameters:
         df: Input DataFrame with open, high, low, close, volume columns.
         drop_ohlcv: If True, returns only date/datetime and signal columns.
                     If False, returns original DataFrame concatenated with signal columns.
+        show_progress: If True, displays a real-time progress bar for each signal group.
 
     Returns:
         pd.DataFrame with all signals standardized to 'buy' | 'sell' | 'hold' | 'none'.
     """
     normalized = normalize_ohlcv(df)
-    signals = run_all_signal_generators(normalized)
+    signals = run_all_signal_generators(normalized, show_progress=show_progress)
 
     if drop_ohlcv:
         date_cols = [c for c in df.columns if str(c).strip().lower() in DATE_COLUMN_NAMES]

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 CANDLESTICK_SIGNAL_COLUMNS = [
@@ -609,72 +610,104 @@ def _calc_tweezer_tops_bottoms(
     return pd.Series(res, index=open_p.index, dtype=str)
 
 
-def generate_candlestick_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """Generate all 14 candlestick and price action signals from OHLCV dataframe."""
+def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
+    """Generate all 14 candlestick and price action signals from OHLCV dataframe.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing 14 columns ending with '_signal', with values in
+        ['buy', 'sell', 'hold', 'none'] and index matching the input df.
+    """
     df_norm = normalize_ohlcv(df)
 
-    if len(df_norm) == 0:
-        return pd.DataFrame(
-            {col: pd.Series(dtype=str, index=df.index) for col in CANDLESTICK_SIGNAL_COLUMNS},
-            index=df.index,
+    with GroupProgressBar(
+        "Candlestick Signals", total=len(CANDLESTICK_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if len(df_norm) == 0:
+            pbar.update(len(CANDLESTICK_SIGNAL_COLUMNS))
+            return pd.DataFrame(
+                {col: pd.Series(dtype=str, index=df.index) for col in CANDLESTICK_SIGNAL_COLUMNS},
+                index=df.index,
+            )
+
+        open_p = df_norm["open"]
+        high = df_norm["high"]
+        low = df_norm["low"]
+        close = df_norm["close"]
+
+        signals = pd.DataFrame(index=df_norm.index)
+
+        # 1. Bullish and Bearish Engulfing (1)
+        signals["cdl_engulfing_signal"] = _calc_engulfing(open_p, close)
+        pbar.update(1)
+
+        # 2. Hammer, Inverted Hammer, Shooting Star, Hanging Man (1)
+        signals["cdl_hammer_star_signal"] = _calc_hammer_star(open_p, high, low, close)
+        pbar.update(1)
+
+        # 3. Pinbar price rejection (1)
+        signals["cdl_pinbar_signal"] = _calc_pinbar(open_p, high, low, close)
+        pbar.update(1)
+
+        # 4. Marubozu strong momentum directional candle (1)
+        signals["cdl_marubozu_signal"] = _calc_marubozu(open_p, high, low, close)
+        pbar.update(1)
+
+        # 5. Bullish and Bearish Harami (1)
+        signals["cdl_harami_signal"] = _calc_harami(open_p, close)
+        pbar.update(1)
+
+        # 6. Inside Bar breakout (1)
+        signals["cdl_inside_bar_breakout_signal"] = _calc_inside_bar(open_p, high, low, close)
+        pbar.update(1)
+
+        # 7. Outside Bar breakout (1)
+        signals["cdl_outside_bar_signal"] = _calc_outside_bar(open_p, high, low, close)
+        pbar.update(1)
+
+        # 8. Doji reversal (Dragonfly / Gravestone) (1)
+        signals["cdl_doji_reversal_signal"] = _calc_doji_reversal(open_p, high, low, close)
+        pbar.update(1)
+
+        # 9. Three White Soldiers / Three Black Crows (1)
+        signals["cdl_three_soldiers_crows_signal"] = _calc_three_soldiers_crows(open_p, close)
+        pbar.update(1)
+
+        # 10. Three consecutive directional bars (1)
+        signals["cdl_consecutive_3_signal"] = _calc_consecutive_directional(open_p, close, window=3)
+        pbar.update(1)
+
+        # 11. Five consecutive directional bars (1)
+        signals["cdl_consecutive_5_signal"] = _calc_consecutive_directional(open_p, close, window=5)
+        pbar.update(1)
+
+        # 12. Morning Star and Evening Star (1)
+        signals["cdl_morning_evening_star_signal"] = _calc_morning_evening_star(open_p, close)
+        pbar.update(1)
+
+        # 13. Piercing Line and Dark Cloud Cover (1)
+        signals["cdl_piercing_darkcloud_signal"] = _calc_piercing_darkcloud(open_p, close)
+        pbar.update(1)
+
+        # 14. Tweezer Tops and Bottoms (1)
+        signals["cdl_tweezer_tops_bottoms_signal"] = _calc_tweezer_tops_bottoms(
+            open_p, high, low, close
         )
+        pbar.update(1)
 
-    open_p = df_norm["open"]
-    high = df_norm["high"]
-    low = df_norm["low"]
-    close = df_norm["close"]
+        # Ensure all columns are present, filled with NONE, and match index
+        for col in CANDLESTICK_SIGNAL_COLUMNS:
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
 
-    signals = pd.DataFrame(index=df_norm.index)
-
-    # 1. Bullish and Bearish Engulfing
-    signals["cdl_engulfing_signal"] = _calc_engulfing(open_p, close)
-
-    # 2. Hammer, Inverted Hammer, Shooting Star, Hanging Man
-    signals["cdl_hammer_star_signal"] = _calc_hammer_star(open_p, high, low, close)
-
-    # 3. Pinbar price rejection
-    signals["cdl_pinbar_signal"] = _calc_pinbar(open_p, high, low, close)
-
-    # 4. Marubozu strong momentum directional candle
-    signals["cdl_marubozu_signal"] = _calc_marubozu(open_p, high, low, close)
-
-    # 5. Bullish and Bearish Harami
-    signals["cdl_harami_signal"] = _calc_harami(open_p, close)
-
-    # 6. Inside Bar breakout
-    signals["cdl_inside_bar_breakout_signal"] = _calc_inside_bar(open_p, high, low, close)
-
-    # 7. Outside Bar breakout
-    signals["cdl_outside_bar_signal"] = _calc_outside_bar(open_p, high, low, close)
-
-    # 8. Doji reversal (Dragonfly / Gravestone)
-    signals["cdl_doji_reversal_signal"] = _calc_doji_reversal(open_p, high, low, close)
-
-    # 9. Three White Soldiers / Three Black Crows
-    signals["cdl_three_soldiers_crows_signal"] = _calc_three_soldiers_crows(open_p, close)
-
-    # 10. Three consecutive directional bars
-    signals["cdl_consecutive_3_signal"] = _calc_consecutive_directional(open_p, close, window=3)
-
-    # 11. Five consecutive directional bars
-    signals["cdl_consecutive_5_signal"] = _calc_consecutive_directional(open_p, close, window=5)
-
-    # 12. Morning Star and Evening Star
-    signals["cdl_morning_evening_star_signal"] = _calc_morning_evening_star(open_p, close)
-
-    # 13. Piercing Line and Dark Cloud Cover
-    signals["cdl_piercing_darkcloud_signal"] = _calc_piercing_darkcloud(open_p, close)
-
-    # 14. Tweezer Tops and Bottoms
-    signals["cdl_tweezer_tops_bottoms_signal"] = _calc_tweezer_tops_bottoms(
-        open_p, high, low, close
-    )
-
-    # Ensure all columns are present, filled with NONE, and match index
-    for col in CANDLESTICK_SIGNAL_COLUMNS:
-        if col not in signals.columns:
-            signals[col] = SignalState.NONE
-        else:
-            signals[col] = signals[col].fillna(SignalState.NONE)
-
-    return signals[CANDLESTICK_SIGNAL_COLUMNS]
+        return signals[CANDLESTICK_SIGNAL_COLUMNS]
