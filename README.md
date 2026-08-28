@@ -114,11 +114,12 @@ print(SignalState.NONE)  # "none" -> Neutral / Indeterminate / Warmup phase
 
 ## Python API Reference
 
-### `signalx.generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False) -> pd.DataFrame`
+### `signalx.generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False, show_progress: bool = False) -> pd.DataFrame`
 The primary pipeline execution function. Normalizes input columns, executes all 7 signal category generators, and compiles the result.
 
 - `df`: Input `pandas.DataFrame` with Open, High, Low, Close, and Volume columns (case-insensitive).
-- `drop_ohlcv`: If `True`, returns only the 114 signal columns (preserving Date/Datetime if present). If `False` (default), concatenates signals with the original DataFrame.
+- `drop_ohlcv`: When `False` (default), returns the original DataFrame concatenated with the 114 signal columns. When `True`, returns only date/datetime columns and signal columns.
+- `show_progress`: When `True`, displays real-time per-group progress bars in the terminal. Default is `False`.
 
 ```python
 import signalx

@@ -306,3 +306,13 @@ def test_cli_main_module_execution():
     )
     assert result.returncode == 0
     assert f"signalx {__version__}" in result.stdout or f"signalx {__version__}" in result.stderr
+
+
+def test_cli_generate_no_progress_flag(
+    sample_parquet_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    out_file = tmp_path / "out_no_progress.parquet"
+    main(["generate", str(sample_parquet_file), "-o", str(out_file), "--no-progress"])
+    assert out_file.exists()
+    captured = capsys.readouterr()
+    assert "Successfully generated signals" in captured.out

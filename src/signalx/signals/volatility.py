@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 VOLATILITY_SIGNAL_COLUMNS = [
@@ -292,13 +293,15 @@ def _calc_hv_ratio_breakout(
     return pd.Series(res, index=close.index, dtype=str)
 
 
-def generate_volatility_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 17 standardized volatility & breakout signals from normalized OHLCV data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -309,161 +312,177 @@ def generate_volatility_signals(df: pd.DataFrame) -> pd.DataFrame:
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
-        for col in VOLATILITY_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
-        return signals
+    with GroupProgressBar(
+        "Volatility Signals", total=len(VOLATILITY_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in VOLATILITY_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(VOLATILITY_SIGNAL_COLUMNS))
+            return signals
 
-    close = df_norm["close"]
-    high = df_norm["high"]
-    low = df_norm["low"]
+        close = df_norm["close"]
+        high = df_norm["high"]
+        low = df_norm["low"]
 
-    # 1. Bollinger Bands (20, 2.0 std) Breakout & Bounce
-    bb20 = ta.volatility.BollingerBands(close=close, window=20, window_dev=2.0, fillna=False)
-    bb20_h = bb20.bollinger_hband()
-    bb20_l = bb20.bollinger_lband()
-    bb20_m = bb20.bollinger_mavg()
-    bb20_p = bb20.bollinger_pband()
-    bb20_w = bb20.bollinger_wband()
+        # 1. Bollinger Bands (20, 2.0 std) Breakout & Bounce (2)
+        bb20 = ta.volatility.BollingerBands(close=close, window=20, window_dev=2.0, fillna=False)
+        bb20_h = bb20.bollinger_hband()
+        bb20_l = bb20.bollinger_lband()
+        bb20_m = bb20.bollinger_mavg()
+        bb20_p = bb20.bollinger_pband()
+        bb20_w = bb20.bollinger_wband()
 
-    signals["vol_bb_breakout_20_20_signal"] = _channel_breakout_signal(close, bb20_l, bb20_h)
-    signals["vol_bb_bounce_20_20_signal"] = _calc_bb_bounce(close, bb20_l, bb20_h)
+        signals["vol_bb_breakout_20_20_signal"] = _channel_breakout_signal(close, bb20_l, bb20_h)
+        signals["vol_bb_bounce_20_20_signal"] = _calc_bb_bounce(close, bb20_l, bb20_h)
+        pbar.update(2)
 
-    # 2. Bollinger Bands (50, 2.5 std) Breakout & Bounce
-    bb50 = ta.volatility.BollingerBands(close=close, window=50, window_dev=2.5, fillna=False)
-    bb50_h = bb50.bollinger_hband()
-    bb50_l = bb50.bollinger_lband()
+        # 2. Bollinger Bands (50, 2.5 std) Breakout & Bounce (2)
+        bb50 = ta.volatility.BollingerBands(close=close, window=50, window_dev=2.5, fillna=False)
+        bb50_h = bb50.bollinger_hband()
+        bb50_l = bb50.bollinger_lband()
 
-    signals["vol_bb_breakout_50_25_signal"] = _channel_breakout_signal(close, bb50_l, bb50_h)
-    signals["vol_bb_bounce_50_25_signal"] = _calc_bb_bounce(close, bb50_l, bb50_h)
+        signals["vol_bb_breakout_50_25_signal"] = _channel_breakout_signal(close, bb50_l, bb50_h)
+        signals["vol_bb_bounce_50_25_signal"] = _calc_bb_bounce(close, bb50_l, bb50_h)
+        pbar.update(2)
 
-    # 3. Bollinger %B Reversals (20, 50)
-    signals["vol_bb_pct_b_reversal_20_signal"] = _calc_pct_b_reversal(bb20_p)
+        # 3. Bollinger %B Reversals (20, 50) (2)
+        signals["vol_bb_pct_b_reversal_20_signal"] = _calc_pct_b_reversal(bb20_p)
 
-    bb50_p = ta.volatility.BollingerBands(
-        close=close, window=50, window_dev=2.0, fillna=False
-    ).bollinger_pband()
-    signals["vol_bb_pct_b_reversal_50_signal"] = _calc_pct_b_reversal(bb50_p)
+        bb50_p = ta.volatility.BollingerBands(
+            close=close, window=50, window_dev=2.0, fillna=False
+        ).bollinger_pband()
+        signals["vol_bb_pct_b_reversal_50_signal"] = _calc_pct_b_reversal(bb50_p)
+        pbar.update(2)
 
-    # 4. Donchian Channel Breakouts (10, 20, 55)
-    for period in [10, 20, 55]:
-        col_name = f"vol_donchian_breakout_{period}_signal"
-        sig_dc = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
-        if len(df_norm) >= period:
-            try:
-                dc = ta.volatility.DonchianChannel(
-                    high=high, low=low, close=close, window=period, fillna=False
-                )
-                sig_dc = _donchian_breakout_signal(
-                    close,
-                    dc.donchian_channel_lband().shift(1),
-                    dc.donchian_channel_hband().shift(1),
-                )
-            except Exception:
-                pass
-        signals[col_name] = sig_dc
+        # 4. Donchian Channel Breakouts (10, 20, 55) (3)
+        for period in [10, 20, 55]:
+            col_name = f"vol_donchian_breakout_{period}_signal"
+            sig_dc = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
+            if len(df_norm) >= period:
+                try:
+                    dc = ta.volatility.DonchianChannel(
+                        high=high, low=low, close=close, window=period, fillna=False
+                    )
+                    sig_dc = _donchian_breakout_signal(
+                        close,
+                        dc.donchian_channel_lband().shift(1),
+                        dc.donchian_channel_hband().shift(1),
+                    )
+                except Exception:
+                    pass
+            signals[col_name] = sig_dc
+        pbar.update(3)
 
-    # 5. Keltner Channel Breakouts (20/1.5, 20/2.0)
-    for mult, mult_str in [(1.5, "15"), (2.0, "20")]:
-        col_name = f"vol_keltner_breakout_20_{mult_str}_signal"
-        sig_kc = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
+        # 5. Keltner Channel Breakouts (20/1.5, 20/2.0) (2)
+        for mult, mult_str in [(1.5, "15"), (2.0, "20")]:
+            col_name = f"vol_keltner_breakout_20_{mult_str}_signal"
+            sig_kc = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
+            if len(df_norm) >= 20:
+                try:
+                    kc = ta.volatility.KeltnerChannel(
+                        high=high,
+                        low=low,
+                        close=close,
+                        window=20,
+                        window_atr=10,
+                        multiplier=mult,
+                        original_version=False,
+                        fillna=False,
+                    )
+                    sig_kc = _channel_breakout_signal(
+                        close, kc.keltner_channel_lband(), kc.keltner_channel_hband()
+                    )
+                except Exception:
+                    pass
+            signals[col_name] = sig_kc
+        pbar.update(2)
+
+        # 6. TTM Squeeze Breakout (1)
+        sig_ttm = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
         if len(df_norm) >= 20:
             try:
-                kc = ta.volatility.KeltnerChannel(
+                kc_ttm = ta.volatility.KeltnerChannel(
                     high=high,
                     low=low,
                     close=close,
                     window=20,
                     window_atr=10,
-                    multiplier=mult,
+                    multiplier=1.5,
                     original_version=False,
                     fillna=False,
                 )
-                sig_kc = _channel_breakout_signal(
-                    close, kc.keltner_channel_lband(), kc.keltner_channel_hband()
+                sig_ttm = _calc_ttm_squeeze(
+                    bb20_h,
+                    bb20_l,
+                    kc_ttm.keltner_channel_hband(),
+                    kc_ttm.keltner_channel_lband(),
+                    close,
+                    bb20_m,
                 )
             except Exception:
                 pass
-        signals[col_name] = sig_kc
+        signals["vol_ttm_squeeze_signal"] = sig_ttm
+        pbar.update(1)
 
-    # 6. TTM Squeeze Breakout
-    sig_ttm = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
-    if len(df_norm) >= 20:
-        try:
-            kc_ttm = ta.volatility.KeltnerChannel(
-                high=high,
-                low=low,
-                close=close,
-                window=20,
-                window_atr=10,
-                multiplier=1.5,
-                original_version=False,
-                fillna=False,
-            )
-            sig_ttm = _calc_ttm_squeeze(
-                bb20_h,
-                bb20_l,
-                kc_ttm.keltner_channel_hband(),
-                kc_ttm.keltner_channel_lband(),
-                close,
-                bb20_m,
-            )
-        except Exception:
-            pass
-    signals["vol_ttm_squeeze_signal"] = sig_ttm
+        # 7. Bollinger Bandwidth Expansion Surge (1)
+        sig_wband = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
+        if len(df_norm) >= 20:
+            try:
+                q80 = bb20_w.rolling(window=20, min_periods=5).quantile(0.80)
+                w_arr = bb20_w.to_numpy(dtype=float, na_value=np.nan)
+                q_arr = q80.to_numpy(dtype=float, na_value=np.nan)
+                c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+                prev_c_arr = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
 
-    # 7. Bollinger Bandwidth Expansion Surge
-    sig_wband = pd.Series(SignalState.NONE, index=df_norm.index, dtype=str)
-    if len(df_norm) >= 20:
-        try:
-            q80 = bb20_w.rolling(window=20, min_periods=5).quantile(0.80)
-            w_arr = bb20_w.to_numpy(dtype=float, na_value=np.nan)
-            q_arr = q80.to_numpy(dtype=float, na_value=np.nan)
-            c_arr = close.to_numpy(dtype=float, na_value=np.nan)
-            prev_c_arr = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+                valid_w = (
+                    ~np.isnan(w_arr) & ~np.isnan(q_arr) & ~np.isnan(c_arr) & ~np.isnan(prev_c_arr)
+                )
+                surge = valid_w & (w_arr > q_arr)
 
-            valid_w = ~np.isnan(w_arr) & ~np.isnan(q_arr) & ~np.isnan(c_arr) & ~np.isnan(prev_c_arr)
-            surge = valid_w & (w_arr > q_arr)
+                condlist_w = [
+                    surge & (c_arr > prev_c_arr),
+                    surge & (c_arr < prev_c_arr),
+                    valid_w,
+                ]
+                choicelist_w = [
+                    SignalState.BUY,
+                    SignalState.SELL,
+                    SignalState.HOLD,
+                ]
+                res_w = np.select(condlist_w, choicelist_w, default=SignalState.NONE)
+                sig_wband = pd.Series(res_w, index=df_norm.index, dtype=str)
+            except Exception:
+                pass
+        signals["vol_bb_bandwidth_expansion_signal"] = sig_wband
+        pbar.update(1)
 
-            condlist_w = [
-                surge & (c_arr > prev_c_arr),
-                surge & (c_arr < prev_c_arr),
-                valid_w,
-            ]
-            choicelist_w = [
-                SignalState.BUY,
-                SignalState.SELL,
-                SignalState.HOLD,
-            ]
-            res_w = np.select(condlist_w, choicelist_w, default=SignalState.NONE)
-            sig_wband = pd.Series(res_w, index=df_norm.index, dtype=str)
-        except Exception:
-            pass
-    signals["vol_bb_bandwidth_expansion_signal"] = sig_wband
+        # 8. ATR Trailing Stop Direction (2x, 3x) (2)
+        signals["vol_atr_trailing_stop_2x_signal"] = _calc_atr_trailing_stop(
+            close, high, low, window=14, multiplier=2.0
+        )
+        signals["vol_atr_trailing_stop_3x_signal"] = _calc_atr_trailing_stop(
+            close, high, low, window=14, multiplier=3.0
+        )
+        pbar.update(2)
 
-    # 8. ATR Trailing Stop Direction (2x, 3x)
-    signals["vol_atr_trailing_stop_2x_signal"] = _calc_atr_trailing_stop(
-        close, high, low, window=14, multiplier=2.0
-    )
-    signals["vol_atr_trailing_stop_3x_signal"] = _calc_atr_trailing_stop(
-        close, high, low, window=14, multiplier=3.0
-    )
+        # 9. Chaikin Volatility Surge (1)
+        signals["vol_chaikin_volatility_surge_signal"] = _calc_chaikin_volatility(
+            high, low, length=10, roc_length=10
+        )
+        pbar.update(1)
 
-    # 9. Chaikin Volatility Surge
-    signals["vol_chaikin_volatility_surge_signal"] = _calc_chaikin_volatility(
-        high, low, length=10, roc_length=10
-    )
+        # 10. Historical Volatility Ratio (10/30) Breakout (1)
+        signals["vol_hv_ratio_breakout_10_30_signal"] = _calc_hv_ratio_breakout(
+            close, window_fast=10, window_slow=30, threshold=1.5
+        )
+        pbar.update(1)
 
-    # 10. Historical Volatility Ratio (10/30) Breakout
-    signals["vol_hv_ratio_breakout_10_30_signal"] = _calc_hv_ratio_breakout(
-        close, window_fast=10, window_slow=30, threshold=1.5
-    )
+        # Ensure all columns are present, filled with NONE, and matching index
+        for col in VOLATILITY_SIGNAL_COLUMNS:
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
 
-    # Ensure all columns are present, filled with NONE, and matching index
-    for col in VOLATILITY_SIGNAL_COLUMNS:
-        if col not in signals.columns:
-            signals[col] = SignalState.NONE
-        else:
-            signals[col] = signals[col].fillna(SignalState.NONE)
-
-    return signals[VOLATILITY_SIGNAL_COLUMNS]
+        return signals[VOLATILITY_SIGNAL_COLUMNS]

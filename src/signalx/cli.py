@@ -54,7 +54,8 @@ def handle_generate(args: argparse.Namespace) -> None:
     df = load_dataframe(input_path)
     print(f"Loaded {len(df)} rows from {input_path}")
 
-    signals_df = generate_signals(df, drop_ohlcv=args.drop_ohlcv)
+    show_progress = not getattr(args, "no_progress", False)
+    signals_df = generate_signals(df, drop_ohlcv=args.drop_ohlcv, show_progress=show_progress)
     saved_path = save_dataframe(signals_df, output_path)
     print(
         f"Successfully generated signals. Output saved to {saved_path} "
@@ -179,6 +180,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--stats-report",
         action="store_true",
         help="Print signal distribution statistics after generation.",
+    )
+    gen_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable real-time progress bars during signal generation.",
     )
 
     # inspect subcommand

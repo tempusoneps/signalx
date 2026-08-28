@@ -14,8 +14,8 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 114 standardized signals
-signals_df = signalx.generate_signals(df)
+# 2. Extract all 114 standardized signals (optionally with real-time per-group progress bar)
+signals_df = signalx.generate_signals(df, show_progress=True)
 
 # 3. View extracted signal columns
 signal_cols = [col for col in signals_df.columns if col.endswith("_signal")]

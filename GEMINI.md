@@ -285,11 +285,12 @@ This document defines the configuration options, parameters, and input/output da
 
 ## 2. Python API Parameters
 
-### `signalx.generate_signals(df, drop_ohlcv=False)`
+### `signalx.generate_signals(df, drop_ohlcv=False, show_progress=False)`
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
 | `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 114 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 114 signal columns. |
+| `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
 
 **Return Value**: `pandas.DataFrame` containing all 114 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
@@ -302,7 +303,7 @@ This document defines the configuration options, parameters, and input/output da
 ### Subcommand: `generate`
 Extracts all 114 trading signals from an input dataset file.
 ```bash
-signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
+signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress]
 ```
 | Flag | Short | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -310,6 +311,7 @@ signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
 | `--output` | `-o` | `Path` | `datasets/<stem>_signals.parquet` | Destination path for output dataset (Parquet or CSV). |
 | `--drop-ohlcv` | | `flag` | `False` | Drop input OHLCV columns from the output file. |
 | `--stats-report` | | `flag` | `False` | Print JSON signal state distribution summary to stdout. |
+| `--no-progress` | | `flag` | `False` | Disable real-time per-group progress bars. |
 
 ### Subcommand: `inspect`
 Validates and displays summary statistics of an OHLCV dataset.
@@ -363,8 +365,8 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 114 standardized signals
-signals_df = signalx.generate_signals(df)
+# 2. Extract all 114 standardized signals (optionally with real-time per-group progress bar)
+signals_df = signalx.generate_signals(df, show_progress=True)
 
 # 3. View extracted signal columns
 signal_cols = [col for col in signals_df.columns if col.endswith("_signal")]

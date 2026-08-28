@@ -6,6 +6,7 @@ import pandas_ta as pta
 import ta
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 MOMENTUM_SIGNAL_COLUMNS = [
@@ -201,13 +202,15 @@ def _calc_ao_saucer(ao: pd.Series) -> pd.Series:
     return pd.Series(res_arr, index=ao.index, dtype=str)
 
 
-def generate_momentum_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 23 standardized momentum & oscillator signals from normalized OHLCV data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -218,119 +221,142 @@ def generate_momentum_signals(df: pd.DataFrame) -> pd.DataFrame:
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
+    with GroupProgressBar(
+        "Momentum Signals", total=len(MOMENTUM_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in MOMENTUM_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(MOMENTUM_SIGNAL_COLUMNS))
+            return signals
+
+        close = df_norm["close"]
+        high = df_norm["high"]
+        low = df_norm["low"]
+        volume = df_norm["volume"]
+
+        # 1. RSI Overbought/Oversold Signals (14, 7, 21, 28) (4)
+        rsi14 = ta.momentum.RSIIndicator(close, window=14, fillna=False).rsi()
+        rsi7 = ta.momentum.RSIIndicator(close, window=7, fillna=False).rsi()
+        rsi21 = ta.momentum.RSIIndicator(close, window=21, fillna=False).rsi()
+        rsi28 = ta.momentum.RSIIndicator(close, window=28, fillna=False).rsi()
+
+        signals["mom_rsi_ob_os_14_signal"] = _bound_signal(rsi14, 30.0, 70.0, buy_below=True)
+        signals["mom_rsi_ob_os_7_signal"] = _bound_signal(rsi7, 20.0, 80.0, buy_below=True)
+        signals["mom_rsi_ob_os_21_signal"] = _bound_signal(rsi21, 30.0, 70.0, buy_below=True)
+        signals["mom_rsi_ob_os_28_signal"] = _bound_signal(rsi28, 30.0, 70.0, buy_below=True)
+        pbar.update(4)
+
+        # 2. RSI Centerline 50 Momentum Shifts (14, 21) (2)
+        centerline_50 = pd.Series(50.0, index=df_norm.index)
+        signals["mom_rsi_50_cross_14_signal"] = _crossover_signal(rsi14, centerline_50)
+        signals["mom_rsi_50_cross_21_signal"] = _crossover_signal(rsi21, centerline_50)
+        pbar.update(2)
+
+        # 3. Stochastic KD Crossovers (14,3,3 and 5,3,3) (2)
+        stoch14 = ta.momentum.StochasticOscillator(
+            high=high, low=low, close=close, window=14, smooth_window=3, fillna=False
+        )
+        signals["mom_stoch_kd_cross_14_3_3_signal"] = _crossover_signal(
+            stoch14.stoch(), stoch14.stoch_signal()
+        )
+
+        stoch5 = ta.momentum.StochasticOscillator(
+            high=high, low=low, close=close, window=5, smooth_window=3, fillna=False
+        )
+        signals["mom_stoch_kd_cross_5_3_3_signal"] = _crossover_signal(
+            stoch5.stoch(), stoch5.stoch_signal()
+        )
+        pbar.update(2)
+
+        # 4. StochRSI Crossover (14) (1)
+        stoch_rsi = ta.momentum.StochRSIIndicator(
+            close=close, window=14, smooth1=3, smooth2=3, fillna=False
+        )
+        signals["mom_stoch_rsi_cross_14_signal"] = _crossover_signal(
+            stoch_rsi.stochrsi_k(), stoch_rsi.stochrsi_d()
+        )
+        pbar.update(1)
+
+        # 5. Williams %R Signals (14, 28) (2)
+        wr14 = ta.momentum.WilliamsRIndicator(
+            high=high, low=low, close=close, lbp=14, fillna=False
+        ).williams_r()
+        wr28 = ta.momentum.WilliamsRIndicator(
+            high=high, low=low, close=close, lbp=28, fillna=False
+        ).williams_r()
+
+        signals["mom_williams_r_14_signal"] = _bound_signal(wr14, -80.0, -20.0, buy_below=True)
+        signals["mom_williams_r_28_signal"] = _bound_signal(wr28, -80.0, -20.0, buy_below=True)
+        pbar.update(2)
+
+        # 6. Commodity Channel Index (CCI) Signals (14 period +/-100, 20 period +/-200) (2)
+        cci14 = ta.trend.CCIIndicator(
+            high=high, low=low, close=close, window=14, fillna=False
+        ).cci()
+        cci20 = ta.trend.CCIIndicator(
+            high=high, low=low, close=close, window=20, fillna=False
+        ).cci()
+
+        signals["mom_cci_100_14_signal"] = _bound_signal(cci14, -100.0, 100.0, buy_below=False)
+        signals["mom_cci_200_20_signal"] = _bound_signal(cci20, -200.0, 200.0, buy_below=False)
+        pbar.update(2)
+
+        # 7. Rate of Change (ROC) Zero Centerline Crossovers (5, 10, 20) (3)
+        centerline_zero = pd.Series(0.0, index=df_norm.index)
+        roc5 = ta.momentum.ROCIndicator(close=close, window=5, fillna=False).roc()
+        roc10 = ta.momentum.ROCIndicator(close=close, window=10, fillna=False).roc()
+        roc20 = ta.momentum.ROCIndicator(close=close, window=20, fillna=False).roc()
+
+        signals["mom_roc_zero_cross_5_signal"] = _crossover_signal(roc5, centerline_zero)
+        signals["mom_roc_zero_cross_10_signal"] = _crossover_signal(roc10, centerline_zero)
+        signals["mom_roc_zero_cross_20_signal"] = _crossover_signal(roc20, centerline_zero)
+        pbar.update(3)
+
+        # 8. Money Flow Index (MFI) Overbought/Oversold (14) (1)
+        mfi14 = ta.volume.MFIIndicator(
+            high=high, low=low, close=close, volume=volume, window=14, fillna=False
+        ).money_flow_index()
+        signals["mom_mfi_ob_os_14_signal"] = _bound_signal(mfi14, 20.0, 80.0, buy_below=True)
+        pbar.update(1)
+
+        # 9. True Strength Index (TSI) Zero Line Crossover (13, 25) (1)
+        tsi = ta.momentum.TSIIndicator(
+            close=close, window_slow=25, window_fast=13, fillna=False
+        ).tsi()
+        signals["mom_tsi_cross_13_25_signal"] = _crossover_signal(tsi, centerline_zero)
+        pbar.update(1)
+
+        # 10. Fisher Transform Crossover (9) (1)
+        fisher_k, fisher_d = _calc_fisher(high, low, length=9)
+        signals["mom_fisher_cross_9_signal"] = _crossover_signal(fisher_k, fisher_d)
+        pbar.update(1)
+
+        # 11. Awesome Oscillator (AO) Zero Cross and Saucer Pattern (2)
+        ao = ta.momentum.AwesomeOscillatorIndicator(
+            high=high, low=low, window1=5, window2=34, fillna=False
+        ).awesome_oscillator()
+        signals["mom_ao_zero_cross_signal"] = _crossover_signal(ao, centerline_zero)
+        signals["mom_ao_saucer_signal"] = _calc_ao_saucer(ao)
+        pbar.update(2)
+
+        # 12. Ultimate Oscillator Boundary Extremes (7, 14, 28) (1)
+        uo = ta.momentum.UltimateOscillator(
+            high=high, low=low, close=close, window1=7, window2=14, window3=28, fillna=False
+        ).ultimate_oscillator()
+        signals["mom_ultimate_osc_signal"] = _bound_signal(uo, 30.0, 70.0, buy_below=True)
+        pbar.update(1)
+
+        # 13. Chande Momentum Oscillator (CMO) Thresholds (14) (1)
+        cmo14 = _calc_cmo(close, length=14)
+        signals["mom_cmo_14_signal"] = _bound_signal(cmo14, -50.0, 50.0, buy_below=False)
+        pbar.update(1)
+
+        # Ensure all columns are present, filled with NONE, and matching index
         for col in MOMENTUM_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
-        return signals
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
 
-    close = df_norm["close"]
-    high = df_norm["high"]
-    low = df_norm["low"]
-    volume = df_norm["volume"]
-
-    # 1. RSI Overbought/Oversold Signals (14, 7, 21, 28)
-    rsi14 = ta.momentum.RSIIndicator(close, window=14, fillna=False).rsi()
-    rsi7 = ta.momentum.RSIIndicator(close, window=7, fillna=False).rsi()
-    rsi21 = ta.momentum.RSIIndicator(close, window=21, fillna=False).rsi()
-    rsi28 = ta.momentum.RSIIndicator(close, window=28, fillna=False).rsi()
-
-    signals["mom_rsi_ob_os_14_signal"] = _bound_signal(rsi14, 30.0, 70.0, buy_below=True)
-    signals["mom_rsi_ob_os_7_signal"] = _bound_signal(rsi7, 20.0, 80.0, buy_below=True)
-    signals["mom_rsi_ob_os_21_signal"] = _bound_signal(rsi21, 30.0, 70.0, buy_below=True)
-    signals["mom_rsi_ob_os_28_signal"] = _bound_signal(rsi28, 30.0, 70.0, buy_below=True)
-
-    # 2. RSI Centerline 50 Momentum Shifts (14, 21)
-    centerline_50 = pd.Series(50.0, index=df_norm.index)
-    signals["mom_rsi_50_cross_14_signal"] = _crossover_signal(rsi14, centerline_50)
-    signals["mom_rsi_50_cross_21_signal"] = _crossover_signal(rsi21, centerline_50)
-
-    # 3. Stochastic KD Crossovers (14,3,3 and 5,3,3)
-    stoch14 = ta.momentum.StochasticOscillator(
-        high=high, low=low, close=close, window=14, smooth_window=3, fillna=False
-    )
-    signals["mom_stoch_kd_cross_14_3_3_signal"] = _crossover_signal(
-        stoch14.stoch(), stoch14.stoch_signal()
-    )
-
-    stoch5 = ta.momentum.StochasticOscillator(
-        high=high, low=low, close=close, window=5, smooth_window=3, fillna=False
-    )
-    signals["mom_stoch_kd_cross_5_3_3_signal"] = _crossover_signal(
-        stoch5.stoch(), stoch5.stoch_signal()
-    )
-
-    # 4. StochRSI Crossover (14)
-    stoch_rsi = ta.momentum.StochRSIIndicator(
-        close=close, window=14, smooth1=3, smooth2=3, fillna=False
-    )
-    signals["mom_stoch_rsi_cross_14_signal"] = _crossover_signal(
-        stoch_rsi.stochrsi_k(), stoch_rsi.stochrsi_d()
-    )
-
-    # 5. Williams %R Signals (14, 28)
-    wr14 = ta.momentum.WilliamsRIndicator(
-        high=high, low=low, close=close, lbp=14, fillna=False
-    ).williams_r()
-    wr28 = ta.momentum.WilliamsRIndicator(
-        high=high, low=low, close=close, lbp=28, fillna=False
-    ).williams_r()
-
-    signals["mom_williams_r_14_signal"] = _bound_signal(wr14, -80.0, -20.0, buy_below=True)
-    signals["mom_williams_r_28_signal"] = _bound_signal(wr28, -80.0, -20.0, buy_below=True)
-
-    # 6. Commodity Channel Index (CCI) Signals (14 period +/-100, 20 period +/-200)
-    cci14 = ta.trend.CCIIndicator(high=high, low=low, close=close, window=14, fillna=False).cci()
-    cci20 = ta.trend.CCIIndicator(high=high, low=low, close=close, window=20, fillna=False).cci()
-
-    signals["mom_cci_100_14_signal"] = _bound_signal(cci14, -100.0, 100.0, buy_below=False)
-    signals["mom_cci_200_20_signal"] = _bound_signal(cci20, -200.0, 200.0, buy_below=False)
-
-    # 7. Rate of Change (ROC) Zero Centerline Crossovers (5, 10, 20)
-    centerline_zero = pd.Series(0.0, index=df_norm.index)
-    roc5 = ta.momentum.ROCIndicator(close=close, window=5, fillna=False).roc()
-    roc10 = ta.momentum.ROCIndicator(close=close, window=10, fillna=False).roc()
-    roc20 = ta.momentum.ROCIndicator(close=close, window=20, fillna=False).roc()
-
-    signals["mom_roc_zero_cross_5_signal"] = _crossover_signal(roc5, centerline_zero)
-    signals["mom_roc_zero_cross_10_signal"] = _crossover_signal(roc10, centerline_zero)
-    signals["mom_roc_zero_cross_20_signal"] = _crossover_signal(roc20, centerline_zero)
-
-    # 8. Money Flow Index (MFI) Overbought/Oversold (14)
-    mfi14 = ta.volume.MFIIndicator(
-        high=high, low=low, close=close, volume=volume, window=14, fillna=False
-    ).money_flow_index()
-    signals["mom_mfi_ob_os_14_signal"] = _bound_signal(mfi14, 20.0, 80.0, buy_below=True)
-
-    # 9. True Strength Index (TSI) Zero Line Crossover (13, 25)
-    tsi = ta.momentum.TSIIndicator(close=close, window_slow=25, window_fast=13, fillna=False).tsi()
-    signals["mom_tsi_cross_13_25_signal"] = _crossover_signal(tsi, centerline_zero)
-
-    # 10. Fisher Transform Crossover (9)
-    fisher_k, fisher_d = _calc_fisher(high, low, length=9)
-    signals["mom_fisher_cross_9_signal"] = _crossover_signal(fisher_k, fisher_d)
-
-    # 11. Awesome Oscillator (AO) Zero Cross and Saucer Pattern
-    ao = ta.momentum.AwesomeOscillatorIndicator(
-        high=high, low=low, window1=5, window2=34, fillna=False
-    ).awesome_oscillator()
-    signals["mom_ao_zero_cross_signal"] = _crossover_signal(ao, centerline_zero)
-    signals["mom_ao_saucer_signal"] = _calc_ao_saucer(ao)
-
-    # 12. Ultimate Oscillator Boundary Extremes (7, 14, 28)
-    uo = ta.momentum.UltimateOscillator(
-        high=high, low=low, close=close, window1=7, window2=14, window3=28, fillna=False
-    ).ultimate_oscillator()
-    signals["mom_ultimate_osc_signal"] = _bound_signal(uo, 30.0, 70.0, buy_below=True)
-
-    # 13. Chande Momentum Oscillator (CMO) Thresholds (14)
-    cmo14 = _calc_cmo(close, length=14)
-    signals["mom_cmo_14_signal"] = _bound_signal(cmo14, -50.0, 50.0, buy_below=False)
-
-    # Ensure all columns are present, filled with NONE, and matching index
-    for col in MOMENTUM_SIGNAL_COLUMNS:
-        if col not in signals.columns:
-            signals[col] = SignalState.NONE
-        else:
-            signals[col] = signals[col].fillna(SignalState.NONE)
-
-    return signals[MOMENTUM_SIGNAL_COLUMNS]
+        return signals[MOMENTUM_SIGNAL_COLUMNS]

@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 VOLUME_SIGNAL_COLUMNS = [
@@ -197,13 +198,15 @@ def _calc_volume_spike_direction(
     return pd.Series(res, index=volume.index, dtype=str)
 
 
-def generate_volume_signals(df: pd.DataFrame) -> pd.DataFrame:
+def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 12 standardized volume & order flow signals from normalized OHLCV data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Input DataFrame containing 'open', 'high', 'low', 'close', 'volume' columns.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -214,93 +217,106 @@ def generate_volume_signals(df: pd.DataFrame) -> pd.DataFrame:
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
+    with GroupProgressBar(
+        "Volume Signals", total=len(VOLUME_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in VOLUME_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(VOLUME_SIGNAL_COLUMNS))
+            return signals
+
+        open_p = df_norm["open"]
+        high = df_norm["high"]
+        low = df_norm["low"]
+        close = df_norm["close"]
+        volume = df_norm["volume"]
+
+        # 1. On-Balance Volume (OBV) crosses its 20-period EMA (1)
+        obv = ta.volume.OnBalanceVolumeIndicator(
+            close=close, volume=volume, fillna=False
+        ).on_balance_volume()
+        obv_ema20 = obv.ewm(span=20, adjust=False).mean()
+        signals["volume_obv_ema_cross_20_signal"] = _crossover_signal(obv, obv_ema20)
+        pbar.update(1)
+
+        # 2. Chaikin Money Flow (20 period) zero cross and +/-0.05 threshold signals (2)
+        cmf20 = ta.volume.ChaikinMoneyFlowIndicator(
+            high=high, low=low, close=close, volume=volume, window=20, fillna=False
+        ).chaikin_money_flow()
+        signals["volume_cmf_zero_cross_20_signal"] = _crossover_signal(
+            cmf20, pd.Series(0.0, index=df_norm.index)
+        )
+        signals["volume_cmf_threshold_cross_20_signal"] = _bound_signal(
+            cmf20, lower=-0.05, upper=0.05, buy_below=False
+        )
+        pbar.update(2)
+
+        # 3. Rolling VWAP price crossovers (20, 50, 100) (3)
+        vwap20 = _calc_rolling_vwap(high, low, close, volume, window=20)
+        signals["volume_vwap_cross_20_signal"] = _crossover_signal(close, vwap20)
+
+        vwap50 = _calc_rolling_vwap(high, low, close, volume, window=50)
+        signals["volume_vwap_cross_50_signal"] = _crossover_signal(close, vwap50)
+
+        vwap100 = _calc_rolling_vwap(high, low, close, volume, window=100)
+        signals["volume_vwap_cross_100_signal"] = _crossover_signal(close, vwap100)
+        pbar.update(3)
+
+        # 4. Rolling 20-period VWAP standard deviation band reversal (1)
+        _, vwap20_lband, vwap20_hband = _calc_vwap_bands(
+            high, low, close, volume, window=20, num_std=2.0
+        )
+        signals["volume_vwap_band_reversal_20_signal"] = _calc_vwap_band_reversal(
+            close, vwap20_lband, vwap20_hband
+        )
+        pbar.update(1)
+
+        # 5. Volume Spike (>2.0x 20-SMA) combined with directional candle body (1)
+        signals["volume_spike_direction_20_signal"] = _calc_volume_spike_direction(
+            open_p, close, volume, window=20, threshold=2.0
+        )
+        pbar.update(1)
+
+        # 6. Price Volume Trend (PVT) crosses 14-period SMA (1)
+        pvt = ta.volume.VolumePriceTrendIndicator(
+            close=close, volume=volume, fillna=False
+        ).volume_price_trend()
+        pvt_sma14 = pvt.rolling(14).mean()
+        signals["volume_pvt_ma_cross_14_signal"] = _crossover_signal(pvt, pvt_sma14)
+        pbar.update(1)
+
+        # 7. Accumulation / Distribution Line (ADL) crosses 20-period SMA (1)
+        adl = ta.volume.AccDistIndexIndicator(
+            high=high, low=low, close=close, volume=volume, fillna=False
+        ).acc_dist_index()
+        adl_sma20 = adl.rolling(20).mean()
+        signals["volume_adl_ma_cross_signal"] = _crossover_signal(adl, adl_sma20)
+        pbar.update(1)
+
+        # 8. Elder's Force Index (13 period) zero line crossover (1)
+        fi13 = ta.volume.ForceIndexIndicator(
+            close=close, volume=volume, window=13, fillna=False
+        ).force_index()
+        signals["volume_force_index_13_signal"] = _crossover_signal(
+            fi13, pd.Series(0.0, index=df_norm.index)
+        )
+        pbar.update(1)
+
+        # 9. Ease of Movement (14 period) zero line crossover (1)
+        eom14 = ta.volume.EaseOfMovementIndicator(
+            high=high, low=low, volume=volume, window=14, fillna=False
+        ).sma_ease_of_movement()
+        signals["volume_eom_zero_14_signal"] = _crossover_signal(
+            eom14, pd.Series(0.0, index=df_norm.index)
+        )
+        pbar.update(1)
+
+        # Ensure all columns are present, filled with NONE, and matching index
         for col in VOLUME_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
-        return signals
+            if col not in signals.columns:
+                signals[col] = SignalState.NONE
+            else:
+                signals[col] = signals[col].fillna(SignalState.NONE)
 
-    open_p = df_norm["open"]
-    high = df_norm["high"]
-    low = df_norm["low"]
-    close = df_norm["close"]
-    volume = df_norm["volume"]
-
-    # 1. On-Balance Volume (OBV) crosses its 20-period EMA
-    obv = ta.volume.OnBalanceVolumeIndicator(
-        close=close, volume=volume, fillna=False
-    ).on_balance_volume()
-    obv_ema20 = obv.ewm(span=20, adjust=False).mean()
-    signals["volume_obv_ema_cross_20_signal"] = _crossover_signal(obv, obv_ema20)
-
-    # 2. Chaikin Money Flow (20 period) zero cross and +/-0.05 threshold signals
-    cmf20 = ta.volume.ChaikinMoneyFlowIndicator(
-        high=high, low=low, close=close, volume=volume, window=20, fillna=False
-    ).chaikin_money_flow()
-    signals["volume_cmf_zero_cross_20_signal"] = _crossover_signal(
-        cmf20, pd.Series(0.0, index=df_norm.index)
-    )
-    signals["volume_cmf_threshold_cross_20_signal"] = _bound_signal(
-        cmf20, lower=-0.05, upper=0.05, buy_below=False
-    )
-
-    # 3. Rolling VWAP price crossovers (20, 50, 100)
-    vwap20 = _calc_rolling_vwap(high, low, close, volume, window=20)
-    signals["volume_vwap_cross_20_signal"] = _crossover_signal(close, vwap20)
-
-    vwap50 = _calc_rolling_vwap(high, low, close, volume, window=50)
-    signals["volume_vwap_cross_50_signal"] = _crossover_signal(close, vwap50)
-
-    vwap100 = _calc_rolling_vwap(high, low, close, volume, window=100)
-    signals["volume_vwap_cross_100_signal"] = _crossover_signal(close, vwap100)
-
-    # 4. Rolling 20-period VWAP standard deviation band reversal
-    _, vwap20_lband, vwap20_hband = _calc_vwap_bands(
-        high, low, close, volume, window=20, num_std=2.0
-    )
-    signals["volume_vwap_band_reversal_20_signal"] = _calc_vwap_band_reversal(
-        close, vwap20_lband, vwap20_hband
-    )
-
-    # 5. Volume Spike (>2.0x 20-SMA) combined with directional candle body
-    signals["volume_spike_direction_20_signal"] = _calc_volume_spike_direction(
-        open_p, close, volume, window=20, threshold=2.0
-    )
-
-    # 6. Price Volume Trend (PVT) crosses 14-period SMA
-    pvt = ta.volume.VolumePriceTrendIndicator(
-        close=close, volume=volume, fillna=False
-    ).volume_price_trend()
-    pvt_sma14 = pvt.rolling(14).mean()
-    signals["volume_pvt_ma_cross_14_signal"] = _crossover_signal(pvt, pvt_sma14)
-
-    # 7. Accumulation / Distribution Line (ADL) crosses 20-period SMA
-    adl = ta.volume.AccDistIndexIndicator(
-        high=high, low=low, close=close, volume=volume, fillna=False
-    ).acc_dist_index()
-    adl_sma20 = adl.rolling(20).mean()
-    signals["volume_adl_ma_cross_signal"] = _crossover_signal(adl, adl_sma20)
-
-    # 8. Elder's Force Index (13 period) zero line crossover
-    fi13 = ta.volume.ForceIndexIndicator(
-        close=close, volume=volume, window=13, fillna=False
-    ).force_index()
-    signals["volume_force_index_13_signal"] = _crossover_signal(
-        fi13, pd.Series(0.0, index=df_norm.index)
-    )
-
-    # 9. Ease of Movement (14 period) zero line crossover
-    eom14 = ta.volume.EaseOfMovementIndicator(
-        high=high, low=low, volume=volume, window=14, fillna=False
-    ).sma_ease_of_movement()
-    signals["volume_eom_zero_14_signal"] = _crossover_signal(
-        eom14, pd.Series(0.0, index=df_norm.index)
-    )
-
-    # Ensure all columns are present, filled with NONE, and matching index
-    for col in VOLUME_SIGNAL_COLUMNS:
-        if col not in signals.columns:
-            signals[col] = SignalState.NONE
-        else:
-            signals[col] = signals[col].fillna(SignalState.NONE)
-
-    return signals[VOLUME_SIGNAL_COLUMNS]
+        return signals[VOLUME_SIGNAL_COLUMNS]

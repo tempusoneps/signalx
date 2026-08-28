@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from signalx.constants import SignalState
+from signalx.progress import GroupProgressBar
 from signalx.utils import normalize_ohlcv
 
 COMPOSITE_SIGNAL_COLUMNS = [
@@ -247,7 +248,9 @@ def _calc_mean_reversion_confluence(intermediate: pd.DataFrame) -> pd.Series:
 
 
 def generate_composite_signals(
-    df: pd.DataFrame, intermediate_signals: pd.DataFrame | None = None
+    df: pd.DataFrame,
+    intermediate_signals: pd.DataFrame | None = None,
+    show_progress: bool = False,
 ) -> pd.DataFrame:
     """Generate all 7 standardized composite and consensus signals.
 
@@ -259,6 +262,8 @@ def generate_composite_signals(
         Pre-computed intermediate signals DataFrame across trend, momentum, volatility,
         volume, candlestick, and statistical families. If None, intermediate signals
         will be computed automatically from df.
+    show_progress : bool, default False
+        Whether to display a real-time progress bar for this signal group.
 
     Returns
     -------
@@ -269,51 +274,66 @@ def generate_composite_signals(
     df_norm = normalize_ohlcv(df)
     signals = pd.DataFrame(index=df_norm.index)
 
-    if df_norm.empty:
-        for col in COMPOSITE_SIGNAL_COLUMNS:
-            signals[col] = pd.Series(dtype=str)
+    with GroupProgressBar(
+        "Composite Signals", total=len(COMPOSITE_SIGNAL_COLUMNS), enabled=show_progress
+    ) as pbar:
+        if df_norm.empty:
+            for col in COMPOSITE_SIGNAL_COLUMNS:
+                signals[col] = pd.Series(dtype=str)
+            pbar.update(len(COMPOSITE_SIGNAL_COLUMNS))
+            return signals
+
+        if intermediate_signals is None or intermediate_signals.empty:
+            # Import lazily to avoid circular dependencies
+            from signalx.signals.candlestick import generate_candlestick_signals
+            from signalx.signals.momentum import generate_momentum_signals
+            from signalx.signals.statistical import generate_statistical_signals
+            from signalx.signals.trend import generate_trend_signals
+            from signalx.signals.volatility import generate_volatility_signals
+            from signalx.signals.volume import generate_volume_signals
+
+            trend = generate_trend_signals(df_norm, show_progress=show_progress)
+            mom = generate_momentum_signals(df_norm, show_progress=show_progress)
+            vol = generate_volatility_signals(df_norm, show_progress=show_progress)
+            volume = generate_volume_signals(df_norm, show_progress=show_progress)
+            cdl = generate_candlestick_signals(df_norm, show_progress=show_progress)
+            stat = generate_statistical_signals(df_norm, show_progress=show_progress)
+            intermediate = pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
+        else:
+            intermediate = intermediate_signals
+
+        # 1. Trend Consensus Signal (1)
+        trend_con = _calc_trend_consensus(intermediate)
+        signals["comp_trend_consensus_signal"] = trend_con
+        pbar.update(1)
+
+        # 2. Momentum Consensus Signal (1)
+        mom_con = _calc_momentum_consensus(intermediate)
+        signals["comp_momentum_consensus_signal"] = mom_con
+        pbar.update(1)
+
+        # 3. Master Ensemble Signal (1)
+        signals["comp_master_ensemble_signal"] = _calc_master_ensemble(intermediate)
+        pbar.update(1)
+
+        # 4. Moving Average Consensus Signal (1)
+        signals["comp_ma_consensus_signal"] = _calc_ma_consensus(intermediate)
+        pbar.update(1)
+
+        # 5. Trend & Momentum Alignment Signal (1)
+        signals["comp_trend_momentum_align_signal"] = _calc_trend_momentum_align(trend_con, mom_con)
+        pbar.update(1)
+
+        # 6. Breakout Volume Confirmed Signal (1)
+        signals["comp_breakout_volume_confirmed_signal"] = _calc_breakout_volume_confirmed(
+            intermediate
+        )
+        pbar.update(1)
+
+        # 7. Mean Reversion Confluence Signal (1)
+        signals["comp_mean_reversion_confluence_signal"] = _calc_mean_reversion_confluence(
+            intermediate
+        )
+        pbar.update(1)
+
         return signals
-
-    if intermediate_signals is None or intermediate_signals.empty:
-        # Import lazily to avoid circular dependencies
-        from signalx.signals.candlestick import generate_candlestick_signals
-        from signalx.signals.momentum import generate_momentum_signals
-        from signalx.signals.statistical import generate_statistical_signals
-        from signalx.signals.trend import generate_trend_signals
-        from signalx.signals.volatility import generate_volatility_signals
-        from signalx.signals.volume import generate_volume_signals
-
-        trend = generate_trend_signals(df_norm)
-        mom = generate_momentum_signals(df_norm)
-        vol = generate_volatility_signals(df_norm)
-        volume = generate_volume_signals(df_norm)
-        cdl = generate_candlestick_signals(df_norm)
-        stat = generate_statistical_signals(df_norm)
-        intermediate = pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
-    else:
-        intermediate = intermediate_signals
-
-    # 1. Trend Consensus Signal
-    trend_con = _calc_trend_consensus(intermediate)
-    signals["comp_trend_consensus_signal"] = trend_con
-
-    # 2. Momentum Consensus Signal
-    mom_con = _calc_momentum_consensus(intermediate)
-    signals["comp_momentum_consensus_signal"] = mom_con
-
-    # 3. Master Ensemble Signal
-    signals["comp_master_ensemble_signal"] = _calc_master_ensemble(intermediate)
-
-    # 4. Moving Average Consensus Signal
-    signals["comp_ma_consensus_signal"] = _calc_ma_consensus(intermediate)
-
-    # 5. Trend & Momentum Alignment Signal
-    signals["comp_trend_momentum_align_signal"] = _calc_trend_momentum_align(trend_con, mom_con)
-
-    # 6. Breakout Volume Confirmed Signal
-    signals["comp_breakout_volume_confirmed_signal"] = _calc_breakout_volume_confirmed(intermediate)
-
-    # 7. Mean Reversion Confluence Signal
-    signals["comp_mean_reversion_confluence_signal"] = _calc_mean_reversion_confluence(intermediate)
-
-    return signals
