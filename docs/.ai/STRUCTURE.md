@@ -1,0 +1,84 @@
+# SignalX Repository Structure & File Responsibilities
+
+This document provides a comprehensive breakdown of the directory layout and the single responsibility of each module in `signalx`.
+
+```
+signalx/
+├── .superpowers/                 # Superpowers agent plan and design files
+│   └── sdd/2026-08-28-signalx-library/
+├── datasets/                     # Test datasets and sample OHLCV files
+│   ├── sample_ohlcv.csv
+│   ├── sample_ohlcv.parquet
+│   └── sample_signals.parquet
+├── docs/                         # Documentation root
+│   ├── .ai/                      # AI Agent documentation source files
+│   │   ├── AI_AGENT_GUIDELINE.md # Coding standards, commands, test performance rules
+│   │   ├── CONFIGURATION.md      # CLI options, dataframe schemas, parameters
+│   │   ├── RULE.md               # Core repository invariants and constraints
+│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 114 signals across 7 categories
+│   │   ├── STRUCTURE.md          # Repository layout and module responsibilities
+│   │   └── USAGE.md              # Python API & CLI usage examples
+│   ├── superpowers/              # Spec and implementation plan documentation
+│   └── README.md                 # Master documentation hub
+├── scripts/                      # Developer and build automation scripts
+│   ├── generate_agents_markdown.sh # Compiles docs/.ai/ into AGENTS.md, GEMINI.md, CLAUDE.md
+│   ├── get_vn30f1m_5m_datasets.sh  # Downloads real VN30F1M 5m dataset from repository
+│   ├── prepare_sample_dataset.py   # Generates realistic synthetic OHLCV datasets
+│   └── run_signals.sh              # CLI runner script for signal extraction
+├── src/                          # Main Python source package
+│   └── signalx/
+│       ├── __init__.py           # Library entrypoint, exports SignalState, generate_signals
+│       ├── cli.py                # Command-line interface (generate, inspect, stats, list)
+│       ├── constants.py          # Canonical signal states (buy, sell, hold, none)
+│       ├── core.py               # Orchestration pipeline (generate_signals)
+│       ├── metadata.py           # Signal catalog, category registries, lookup helpers
+│       ├── utils.py              # OHLCV validation, column normalization, I/O, stats
+│       └── signals/              # Category signal generator modules
+│           ├── __init__.py       # Dispatches all category generators
+│           ├── candlestick.py    # Candlestick geometry and price action patterns (14 signals)
+│           ├── composite.py      # Consensus and ensemble voting signals (7 signals)
+│           ├── momentum.py       # Oscillators and momentum indicators (23 signals)
+│           ├── statistical.py    # Z-scores, linear regression, efficiency (11 signals)
+│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (30 signals)
+│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (17 signals)
+│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (12 signals)
+├── tests/                        # Comprehensive unit and integration test suite
+│   ├── test_cli.py               # Tests for CLI subcommands and flag parsing
+│   ├── test_constants.py         # Tests for SignalState and ALL_SIGNAL_STATES
+│   ├── test_data_validation.py   # Tests for normalize_ohlcv and load/save helpers
+│   ├── test_full_pipeline.py     # End-to-end pipeline and integration tests
+│   ├── test_metadata.py          # Tests for metadata registration and queries
+│   ├── test_signals_candlestick.py # Tests for candlestick signals
+│   ├── test_signals_composite.py   # Tests for composite signals
+│   ├── test_signals_momentum.py    # Tests for momentum signals
+│   ├── test_signals_statistical.py # Tests for statistical signals
+│   ├── test_signals_trend.py       # Tests for trend signals
+│   ├── test_signals_volatility.py  # Tests for volatility signals
+│   └── test_signals_volume.py      # Tests for volume signals
+├── AGENTS.md                     # Compiled agent instructions (auto-generated)
+├── CLAUDE.md                     # Compiled Claude instructions (auto-generated)
+├── GEMINI.md                     # Compiled Gemini instructions (auto-generated)
+├── pyproject.toml                # Project configuration, dependencies, build settings
+└── README.md                     # User-facing library overview and documentation
+```
+
+---
+
+## Detailed Module Responsibilities
+
+### Core Library (`src/signalx/`)
+- `constants.py`: Holds `SignalState` class with strings `"buy"`, `"sell"`, `"hold"`, `"none"` and `ALL_SIGNAL_STATES` frozenset.
+- `utils.py`: Provides input data sanitation (`normalize_ohlcv`), case-insensitive column aliasing, DataFrame I/O (`load_dataframe`, `save_dataframe`), and frequency metrics (`compute_signal_stats`).
+- `metadata.py`: Implements `SignalMetadata` data structures and the master registry `SIGNAL_CATALOG` containing detailed trigger rules for all 114 signals.
+- `core.py`: Exposes `generate_signals(df, drop_ohlcv=False)` which coordinates normalization, dispatches category signal extractors, and aggregates results.
+- `cli.py`: Implements the `signalx` command-line executable using `argparse`.
+
+### Signal Generators (`src/signalx/signals/`)
+- `trend.py`: Moving average crossovers (SMA, EMA, DEMA, TEMA, HMA, VWMA), MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, Vortex.
+- `momentum.py`: RSI multi-period, Stochastics, StochRSI, Williams %R, CCI, ROC, MFI, TSI, Fisher Transform, Awesome Oscillator, Ultimate Oscillator, CMO.
+- `volatility.py`: Bollinger Bands breakouts/bounces, %B reversals, Donchian Channels, Keltner Channels, TTM Squeeze, Bandwidth Expansion, ATR Trailing Stops, Chaikin Volatility, Historical Volatility Ratio.
+- `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM).
+- `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms.
+- `statistical.py`: Rolling Price Z-Scores, Rolling Return Z-Scores, Kaufman Efficiency Ratio (KER), Choppiness Index, Rolling Quantile Extremes, Linear Regression Slope & Price Cross.
+- `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence.
+- `__init__.py`: Aggregates all category functions into `run_all_signal_generators(df)`.
