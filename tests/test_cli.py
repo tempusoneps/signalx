@@ -172,7 +172,7 @@ def test_cli_generate_default_output(
     assert expected_output.exists()
     df_out = pd.read_parquet(expected_output)
     assert len(df_out) == 100
-    assert "trend_sma_cross_5_20_signal" in df_out.columns
+    assert "TRD001_signal" in df_out.columns
     assert "open" in df_out.columns
 
 
@@ -187,10 +187,46 @@ def test_cli_generate_custom_output_and_drop_ohlcv(
     assert custom_out.exists()
     df_out = pd.read_csv(custom_out)
     assert len(df_out) == 100
-    assert "trend_sma_cross_5_20_signal" in df_out.columns
+    assert "TRD001_signal" in df_out.columns
     assert "open" not in df_out.columns
     assert "volume" not in df_out.columns
     assert "timestamp" in df_out.columns
+
+
+def test_cli_generate_naming_code(
+    sample_parquet_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    custom_out = tmp_path / "output_code.parquet"
+    main(["generate", str(sample_parquet_file), "-o", str(custom_out), "--naming", "code"])
+    captured = capsys.readouterr()
+    assert "Successfully generated signals" in captured.out
+
+    assert custom_out.exists()
+    df_out = pd.read_parquet(custom_out)
+    assert "TRD001_signal" in df_out.columns
+    assert "trend_sma_cross_5_20_signal" not in df_out.columns
+
+
+def test_cli_generate_naming_semantic(
+    sample_parquet_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    custom_out = tmp_path / "output_semantic.parquet"
+    main(["generate", str(sample_parquet_file), "-o", str(custom_out), "--naming", "semantic"])
+    captured = capsys.readouterr()
+    assert "Successfully generated signals" in captured.out
+
+    assert custom_out.exists()
+    df_out = pd.read_parquet(custom_out)
+    assert "trend_sma_cross_5_20_signal" in df_out.columns
+    assert "TRD001_signal" not in df_out.columns
+
+
+def test_cli_generate_naming_invalid(
+    sample_parquet_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    with pytest.raises(SystemExit) as exc_info:
+        main(["generate", str(sample_parquet_file), "--naming", "invalid_naming"])
+    assert exc_info.value.code == 2
 
 
 def test_cli_generate_stats_report(
@@ -201,7 +237,7 @@ def test_cli_generate_stats_report(
     captured = capsys.readouterr()
     assert "Successfully generated signals" in captured.out
     assert "Signal Distribution Summary:" in captured.out
-    assert "trend_sma_cross_5_20_signal" in captured.out
+    assert "TRD001_signal" in captured.out
     assert "Buy %" in captured.out
     assert "Sell %" in captured.out
 
@@ -214,7 +250,7 @@ def test_cli_stats_table(sample_csv_file: Path, tmp_path: Path, capsys: pytest.C
     main(["stats", str(sig_path)])
     captured = capsys.readouterr()
     assert "Signal Statistics for" in captured.out
-    assert "trend_sma_cross_5_20_signal" in captured.out
+    assert "TRD001_signal" in captured.out
     assert "Buy %" in captured.out
     assert "Sell %" in captured.out
     assert "Hold %" in captured.out
@@ -230,11 +266,24 @@ def test_cli_stats_json(sample_csv_file: Path, tmp_path: Path, capsys: pytest.Ca
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert isinstance(data, dict)
-    assert "trend_sma_cross_5_20_signal" in data
-    assert "buy_pct" in data["trend_sma_cross_5_20_signal"]
-    assert "sell_pct" in data["trend_sma_cross_5_20_signal"]
-    assert "hold_pct" in data["trend_sma_cross_5_20_signal"]
-    assert "none_pct" in data["trend_sma_cross_5_20_signal"]
+    assert "TRD001_signal" in data
+    assert "buy_pct" in data["TRD001_signal"]
+    assert "sell_pct" in data["TRD001_signal"]
+    assert "hold_pct" in data["TRD001_signal"]
+    assert "none_pct" in data["TRD001_signal"]
+
+
+def test_cli_stats_semantic_dataset(
+    sample_csv_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    sig_path = tmp_path / "semantic_signals.parquet"
+    main(["generate", str(sample_csv_file), "-o", str(sig_path), "--naming", "semantic"])
+    capsys.readouterr()
+
+    main(["stats", str(sig_path)])
+    captured = capsys.readouterr()
+    assert "trend_sma_cross_5_20_signal" in captured.out
+    assert "Buy %" in captured.out
 
 
 def test_cli_stats_no_signals(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -259,9 +308,11 @@ def test_cli_list_all(capsys: pytest.CaptureFixture[str]):
     captured = capsys.readouterr()
     for cat in VALID_CATEGORIES:
         assert f"Category: {cat.upper()}" in captured.out
-    assert "trend_sma_cross_5_20_signal" in captured.out
-    assert "Description:" in captured.out
-    assert "Buy Trigger:" in captured.out
+    assert "[TRD001_signal]" in captured.out
+    assert "(trend_sma_cross_5_20_signal)" in captured.out
+    assert "Description :" in captured.out
+    assert "Library     :" in captured.out
+    assert "Buy Trigger :" in captured.out
     assert "Sell Trigger:" in captured.out
 
 
@@ -271,7 +322,8 @@ def test_cli_list_category_filter(capsys: pytest.CaptureFixture[str]):
     assert "Category: MOMENTUM" in captured.out
     assert "Category: TREND" not in captured.out
     assert "Category: VOLATILITY" not in captured.out
-    assert "mom_rsi_ob_os_14_signal" in captured.out
+    assert "[MOM001_signal]" in captured.out
+    assert "(mom_rsi_ob_os_14_signal)" in captured.out
 
 
 def test_cli_list_invalid_category(capsys: pytest.CaptureFixture[str]):

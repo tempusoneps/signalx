@@ -14,13 +14,47 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 172 standardized signals (optionally with real-time per-group progress bar)
+# 2. Extract all 172 standardized signals in coded format (default)
 signals_df = signalx.generate_signals(df, show_progress=True)
 
-# 3. View extracted signal columns
+# 3. View extracted signal columns (e.g. TRD001_signal, MOM001_signal, CMP003_signal)
 signal_cols = [col for col in signals_df.columns if col.endswith("_signal")]
-print(f"Generated {len(signal_cols)} signal columns.")
+print(f"Generated {len(signal_cols)} coded signal columns.")
 print(signals_df[signal_cols].head())
+
+# Alternatively, extract signals with descriptive semantic names
+semantic_df = signalx.generate_signals(df, naming="semantic")
+print(semantic_df.filter(regex=r"^trend_.*_signal$").head())
+```
+
+---
+
+### Bidirectional Column Renaming Helpers
+
+You can seamlessly convert DataFrame column names between coded and semantic formats without recalculating indicators:
+
+```python
+from signalx import (
+    get_code_to_name_map,
+    get_name_to_code_map,
+    to_code_names,
+    to_semantic_names,
+)
+
+# Convert coded signal columns to semantic names
+semantic_df = to_semantic_names(signals_df)
+# TRD001_signal -> trend_sma_cross_5_20_signal
+
+# Convert semantic signal columns back to coded format
+coded_df = to_code_names(semantic_df)
+# trend_sma_cross_5_20_signal -> TRD001_signal
+
+# Access complete mappings directly
+code_to_name = get_code_to_name_map()
+print(f"TRD004_signal -> {code_to_name['TRD004_signal']}")
+
+name_to_code = get_name_to_code_map()
+print(f"trend_golden_cross_50_200_signal -> {name_to_code['trend_golden_cross_50_200_signal']}")
 ```
 
 ---
@@ -32,17 +66,17 @@ All signals return one of four strings: `"buy"`, `"sell"`, `"hold"`, `"none"`.
 ```python
 from signalx.constants import SignalState
 
-# Find all bars where Master Ensemble emitted a BUY signal
-ensemble_buys = signals_df[signals_df["comp_master_ensemble_signal"] == SignalState.BUY]
+# Find all bars where Master Ensemble (CMP003_signal) emitted a BUY signal
+ensemble_buys = signals_df[signals_df["CMP003_signal"] == SignalState.BUY]
 print(f"Ensemble Buy triggers: {len(ensemble_buys)}")
 
-# Find bars where RSI oversold is triggered
-rsi_buys = signals_df[signals_df["mom_rsi_ob_os_14_signal"] == SignalState.BUY]
+# Find bars where RSI 14 (MOM001_signal) oversold is triggered
+rsi_buys = signals_df[signals_df["MOM001_signal"] == SignalState.BUY]
 
-# Filter signals by category using column prefixes
-trend_signals = signals_df.filter(regex=r"^trend_.*_signal$")
-volatility_signals = signals_df.filter(regex=r"^vol_.*_signal$")
-composite_signals = signals_df.filter(regex=r"^comp_.*_signal$")
+# Filter signals by category using column prefixes (coded format)
+trend_signals = signals_df.filter(regex=r"^TRD\d{3}_signal$")
+volatility_signals = signals_df.filter(regex=r"^VOL\d{3}_signal$")
+composite_signals = signals_df.filter(regex=r"^CMP\d{3}_signal$")
 ```
 
 ---
@@ -68,6 +102,9 @@ for sig_name, stat in list(stats.items())[:5]:
 ```python
 from signalx.metadata import (
     SIGNAL_CATALOG,
+    SIGNAL_CODE_CATALOG,
+    get_signal_by_code,
+    get_signal_by_name,
     get_signal_metadata,
     get_signals_by_category,
     list_categories,
@@ -80,9 +117,12 @@ print("Categories:", list_categories())
 trend_meta = get_signals_by_category("trend")
 print(f"Total Trend Signals: {len(trend_meta)}")
 
-# Look up a specific signal's trigger logic
-meta = get_signal_metadata("trend_golden_cross_50_200_signal")
+# Look up a specific signal by code or semantic name
+meta = get_signal_metadata(
+    "TRD004_signal"
+)  # or get_signal_metadata("trend_golden_cross_50_200_signal")
 if meta:
+    print(f"Code: {meta.code}")
     print(f"Name: {meta.name}")
     print(f"Description: {meta.description}")
     print(f"Buy Trigger: {meta.buy_trigger}")
@@ -122,8 +162,11 @@ numeric_signals = signals_df[signal_cols].replace(state_mapping)
 
 ### Generating Signals from File
 ```bash
-# Generate signals and output to default path datasets/<name>_signals.parquet
+# Generate coded signals (default) and output to default path datasets/<name>_signals.parquet
 uv run signalx generate datasets/sample_ohlcv.parquet
+
+# Generate signals with semantic naming
+uv run signalx generate datasets/sample_ohlcv.parquet --naming semantic
 
 # Specify custom output destination and print distribution statistics
 uv run signalx generate datasets/sample_ohlcv.parquet \
@@ -153,7 +196,7 @@ uv run signalx stats datasets/sample_signals.parquet --json
 
 ### Listing Signal Catalog
 ```bash
-# List all 172 signals grouped by category
+# List all 172 signals with codes, names, and descriptions
 uv run signalx list
 
 # Filter listing to a specific category

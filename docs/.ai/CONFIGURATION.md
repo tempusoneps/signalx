@@ -32,12 +32,13 @@ This document defines the configuration options, parameters, and input/output da
 
 ## 2. Python API Parameters
 
-### `signalx.generate_signals(df, drop_ohlcv=False, show_progress=False)`
+### `signalx.generate_signals(df, drop_ohlcv=False, show_progress=False, naming="code")`
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
 | `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 172 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 172 signal columns. |
 | `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
+| `naming` | `Literal["code", "semantic"]` | `"code"` | Output column naming format. `"code"` produces compact standardized identifiers (e.g. `TRD001_signal`), while `"semantic"` produces descriptive identifiers (e.g. `trend_sma_cross_5_20_signal`). |
 
 **Return Value**: `pandas.DataFrame` containing all 172 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
@@ -50,7 +51,7 @@ This document defines the configuration options, parameters, and input/output da
 ### Subcommand: `generate`
 Extracts all 172 trading signals from an input dataset file.
 ```bash
-signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress]
+signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress] [--naming {code,semantic}]
 ```
 | Flag | Short | Type | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
@@ -59,6 +60,7 @@ signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
 | `--drop-ohlcv` | | `flag` | `False` | Drop input OHLCV columns from the output file. |
 | `--stats-report` | | `flag` | `False` | Print JSON signal state distribution summary to stdout. |
 | `--no-progress` | | `flag` | `False` | Disable real-time per-group progress bars. |
+| `--naming` | | `str` (`code`, `semantic`) | `code` | Output column naming format: `code` (e.g. `TRD001_signal`) or `semantic` (e.g. `trend_sma_cross_5_20_signal`). |
 
 ### Subcommand: `inspect`
 Validates and displays summary statistics of an OHLCV dataset.
@@ -80,7 +82,7 @@ signalx stats <signals_path> [--json]
 | `--json` | `flag` | `False` | Print results in JSON format instead of human-readable table. |
 
 ### Subcommand: `list`
-Lists registered signals and their descriptions.
+Lists registered signals, codes, and their descriptions.
 ```bash
 signalx list [--category <category>]
 ```

@@ -16,7 +16,7 @@ Whether you are conducting quantitative market research, engineering features fo
 
 - **172 Standardized Signals across 7 Families**: Covers Trend (41), Momentum & Oscillators (30), Volatility & Breakouts (32), Volume Dynamics (18), Candlestick Formations (27), Statistical Metrics (16), and Multi-Indicator Composite Ensembles (8).
 - **Strict 4-State String Representation**: Every single signal value strictly resolves to one of four canonical states: `"buy"`, `"sell"`, `"hold"`, or `"none"`. No inconsistent booleans, integers, or float scales.
-- **Deterministic Column Naming**: 100% of generated signal column names end with the suffix `_signal` (e.g. `trend_macd_cross_signal`, `mom_rsi_ob_os_14_signal`, `comp_master_ensemble_signal`), allowing instant regex matching and clean DataFrame partitioning.
+- **Deterministic Column Naming**: 100% of generated signal column names end with the suffix `_signal`. Defaults to compact coded identifiers (e.g. `TRD001_signal`, `MOM001_signal`, `CMP003_signal`), with full support for verbose semantic names (e.g. `trend_sma_cross_5_20_signal`) and zero-cost bidirectional column conversion.
 - **Zero Future Leakage**: Every calculation strictly adheres to causality — computations at bar $t$ use only past and current information ($\le t$).
 - **High-Performance Vectorization**: Built on top of `pandas`, `numpy`, `pyarrow`, `ta`, `pandas_ta`, `scipy`, and `statsmodels`.
 - **Integrated CLI Application**: Full-featured command-line tool with subcommands `generate`, `inspect`, `stats`, and `list`.
@@ -49,22 +49,32 @@ import signalx
 # 1. Load any OHLCV DataFrame (Parquet or CSV)
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 172 standardized trading signals in a single call
+# 2. Extract all 172 standardized trading signals in coded format (default)
 signals_df = signalx.generate_signals(df)
 
-# 3. Filter and inspect the generated signal columns
+# 3. Filter and inspect the generated signal columns (TRD001_signal, MOM001_signal, etc.)
 signal_cols = [c for c in signals_df.columns if c.endswith("_signal")]
-print(f"Successfully generated {len(signal_cols)} signal columns!")
-
-# Inspect signals for the latest 5 bars
+print(f"Successfully generated {len(signal_cols)} coded signal columns!")
 print(signals_df[["Close"] + signal_cols[:5]].tail())
+
+# 4. Optional: Generate semantic descriptive column names
+semantic_df = signalx.generate_signals(df, naming="semantic")
+
+# 5. Seamlessly convert between coded and semantic column formats
+from signalx import to_code_names, to_semantic_names
+
+semantic_from_coded = to_semantic_names(signals_df)  # TRD001_signal -> trend_sma_cross_5_20_signal
+coded_from_semantic = to_code_names(semantic_df)  # trend_sma_cross_5_20_signal -> TRD001_signal
 ```
 
 ### Command Line Interface (CLI)
 
 ```bash
-# Generate signals and print signal state distribution stats
+# Generate coded signals and print distribution statistics
 uv run signalx generate datasets/sample_ohlcv.parquet -o datasets/sample_signals.parquet --stats-report
+
+# Generate signals with semantic naming format
+uv run signalx generate datasets/sample_ohlcv.parquet --naming semantic
 
 # Inspect dataset columns and summary statistics
 uv run signalx inspect datasets/sample_ohlcv.parquet
@@ -72,7 +82,7 @@ uv run signalx inspect datasets/sample_ohlcv.parquet
 # Calculate buy/sell/hold/none state distribution for all signals
 uv run signalx stats datasets/sample_signals.parquet
 
-# List all 172 available signals
+# List all 172 available signals with codes and descriptions
 uv run signalx list
 ```
 
@@ -82,16 +92,16 @@ uv run signalx list
 
 `signalx` provides 172 production-ready trading signals partitioned across 7 analytical families:
 
-| Category | Signals Count | Primary Analytical Focus | Example Signals |
-| :--- | :--- | :--- | :--- |
-| **Trend** | 41 | Directional moving average crossovers, MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, TRIX, KAMA, TMA | `trend_sma_cross_5_20_signal`, `trend_macd_cross_signal`, `trend_supertrend_10_3_signal`, `trend_ichimoku_cloud_breakout_signal` |
-| **Momentum** | 30 | Oscillators, overbought/oversold boundaries, Connors RSI, RSI divergence, MFI reversals | `mom_rsi_ob_os_14_signal`, `mom_stoch_kd_cross_14_3_3_signal`, `mom_cci_100_14_signal`, `mom_connors_rsi_signal` |
-| **Volatility** | 32 | Bollinger Bands, Donchian channels, Keltner channels, TTM Squeeze, ATR Trailing Stops, LinReg channels, Envelopes | `vol_bb_breakout_20_20_signal`, `vol_donchian_breakout_20_signal`, `vol_ttm_squeeze_signal`, `vol_atr_trailing_stop_2x_signal` |
-| **Volume** | 18 | Volume dynamics, flow accumulation/distribution, VWAP crossovers, Volume Spikes, VSA, VPT divergence | `volume_obv_ema_cross_20_signal`, `volume_cmf_zero_cross_20_signal`, `volume_vwap_cross_20_signal`, `volume_vsa_confirmation_signal` |
-| **Candlestick** | 27 | Price action geometry, rejection wicks, single/multi-bar reversal formations, couple patterns, liquidity sweeps | `cdl_engulfing_signal`, `cdl_pinbar_signal`, `cdl_hammer_star_signal`, `cdl_liquidity_sweep_high_signal` |
-| **Statistical** | 16 | Rolling Z-scores, linear regression slope/crossings, market efficiency filters, MA stretch Z-score, Hurst proxy | `stat_price_zscore_20_signal`, `stat_ker_trend_filter_10_signal`, `stat_chop_regime_14_signal`, `stat_hurst_proxy_50_signal` |
-| **Composite** | 8 | Category consensus voting, trend/momentum confluence, multi-indicator ensembles, MACD+Candlestick confluence | `comp_master_ensemble_signal`, `comp_trend_consensus_signal`, `comp_trend_momentum_align_signal`, `comp_macd_hist_candlestick_reversal_signal` |
-| **Total** | **172** | **Full Quantitative Feature Suite** | |
+| Category | Signals Count | Code Prefix | Primary Analytical Focus | Example Signals |
+| :--- | :--- | :--- | :--- | :--- |
+| **Trend** | 41 | `TRD` | Directional moving average crossovers, MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, TRIX, KAMA, TMA | `TRD001_signal` (`trend_sma_cross_5_20_signal`), `TRD017_signal` (`trend_macd_cross_signal`), `TRD022_signal` (`trend_supertrend_10_3_signal`) |
+| **Momentum** | 30 | `MOM` | Oscillators, overbought/oversold boundaries, Connors RSI, RSI divergence, MFI reversals | `MOM001_signal` (`mom_rsi_ob_os_14_signal`), `MOM007_signal` (`mom_stoch_kd_cross_14_3_3_signal`), `MOM012_signal` (`mom_cci_100_14_signal`) |
+| **Volatility** | 32 | `VOL` | Bollinger Bands, Donchian channels, Keltner channels, TTM Squeeze, ATR Trailing Stops, LinReg channels, Envelopes | `VOL001_signal` (`vol_bb_breakout_20_20_signal`), `VOL008_signal` (`vol_donchian_breakout_20_signal`), `VOL012_signal` (`vol_ttm_squeeze_signal`) |
+| **Volume** | 18 | `VLM` | Volume dynamics, flow accumulation/distribution, VWAP crossovers, Volume Spikes, VSA, VPT divergence | `VLM001_signal` (`volume_obv_ema_cross_20_signal`), `VLM002_signal` (`volume_cmf_zero_cross_20_signal`), `VLM004_signal` (`volume_vwap_cross_20_signal`) |
+| **Candlestick** | 27 | `CDL` | Price action geometry, rejection wicks, single/multi-bar reversal formations, couple patterns, liquidity sweeps | `CDL001_signal` (`cdl_engulfing_signal`), `CDL003_signal` (`cdl_pinbar_signal`), `CDL002_signal` (`cdl_hammer_star_signal`) |
+| **Statistical** | 16 | `STA` | Rolling Z-scores, linear regression slope/crossings, market efficiency filters, MA stretch Z-score, Hurst proxy | `STA002_signal` (`stat_price_zscore_20_signal`), `STA006_signal` (`stat_ker_trend_filter_10_signal`), `STA008_signal` (`stat_chop_regime_14_signal`) |
+| **Composite** | 8 | `CMP` | Category consensus voting, trend/momentum confluence, multi-indicator ensembles, MACD+Candlestick confluence | `CMP003_signal` (`comp_master_ensemble_signal`), `CMP001_signal` (`comp_trend_consensus_signal`), `CMP005_signal` (`comp_trend_momentum_align_signal`) |
+| **Total** | **172** | | **Full Quantitative Feature Suite** | |
 
 For the complete catalog with exact buy and sell trigger conditions, see [docs/.ai/SIGNALS_CATALOG.md](docs/.ai/SIGNALS_CATALOG.md).
 
@@ -114,12 +124,13 @@ print(SignalState.NONE)  # "none" -> Neutral / Indeterminate / Warmup phase
 
 ## Python API Reference
 
-### `signalx.generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False, show_progress: bool = False) -> pd.DataFrame`
+### `signalx.generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False, show_progress: bool = False, naming: Literal["code", "semantic"] = "code") -> pd.DataFrame`
 The primary pipeline execution function. Normalizes input columns, executes all 7 signal category generators, and compiles the result.
 
 - `df`: Input `pandas.DataFrame` with Open, High, Low, Close, and Volume columns (case-insensitive).
 - `drop_ohlcv`: When `False` (default), returns the original DataFrame concatenated with the 172 signal columns. When `True`, returns only date/datetime columns and signal columns.
 - `show_progress`: When `True`, displays real-time per-group progress bars in the terminal. Default is `False`.
+- `naming`: Output column naming format. `"code"` (default) generates compact coded columns (`TRD001_signal` ... `CMP008_signal`), `"semantic"` generates descriptive column names (`trend_sma_cross_5_20_signal` ...).
 
 ```python
 import signalx
@@ -127,17 +138,41 @@ import pandas as pd
 
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# Retain original OHLCV columns + 172 signals
+# Retain original OHLCV columns + 172 coded signals
 full_df = signalx.generate_signals(df)
 
-# Return only 172 signals + Date
+# Return only 172 coded signals + Date
 signals_only_df = signalx.generate_signals(df, drop_ohlcv=True)
+
+# Generate with semantic column naming
+semantic_df = signalx.generate_signals(df, naming="semantic")
+```
+
+### Bidirectional Column Conversion Utilities
+```python
+from signalx import (
+    get_code_to_name_map,
+    get_name_to_code_map,
+    to_code_names,
+    to_semantic_names,
+)
+
+# Convert DataFrame columns
+semantic_df = to_semantic_names(coded_df)
+coded_df = to_code_names(semantic_df)
+
+# Get mapping dictionaries
+code_map = get_code_to_name_map()  # {"TRD001_signal": "trend_sma_cross_5_20_signal", ...}
+name_map = get_name_to_code_map()  # {"trend_sma_cross_5_20_signal": "TRD001_signal", ...}
 ```
 
 ### Signal Metadata Queries
 ```python
 from signalx.metadata import (
     SIGNAL_CATALOG,
+    SIGNAL_CODE_CATALOG,
+    get_signal_by_code,
+    get_signal_by_name,
     get_signal_metadata,
     get_signals_by_category,
     list_categories,
@@ -149,10 +184,13 @@ categories = list_categories()
 # Retrieve all signals in the Volatility family
 vol_signals = get_signals_by_category("volatility")
 
-# Lookup metadata for a specific signal
-meta = get_signal_metadata("vol_ttm_squeeze_signal")
+# Lookup metadata for a specific signal by code or semantic name
+meta = get_signal_metadata("VOL012_signal")  # or get_signal_metadata("vol_ttm_squeeze_signal")
+print(meta.code)  # "VOL012_signal"
 print(meta.name)  # "vol_ttm_squeeze_signal"
-print(meta.description)  # "TTM Squeeze breakout..."
+print(
+    meta.description
+)  # "TTM Squeeze breakout: Bollinger Bands contract inside Keltner Channels then expand"
 print(meta.buy_trigger)  # "Squeeze fires and price is above 20-SMA baseline"
 print(meta.sell_trigger)  # "Squeeze fires and price is below 20-SMA baseline"
 ```
@@ -162,7 +200,7 @@ print(meta.sell_trigger)  # "Squeeze fires and price is below 20-SMA baseline"
 from signalx.utils import compute_signal_stats
 
 stats = compute_signal_stats(signals_df)
-print(stats["comp_master_ensemble_signal"])
+print(stats["CMP003_signal"])
 # Output: {'buy_pct': 12.4, 'sell_pct': 10.8, 'hold_pct': 0.0, 'none_pct': 76.8}
 ```
 
@@ -180,12 +218,13 @@ uv run signalx --help
 ### 1. `generate`
 Generates signals for an input dataset.
 ```bash
-uv run signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report]
+uv run signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress] [--naming {code,semantic}]
 ```
 - `<input_path>`: Path to input CSV or Parquet file.
 - `-o`, `--output`: Custom output path (defaults to `datasets/<name>_signals.parquet`).
 - `--drop-ohlcv`: Output only the signal columns.
 - `--stats-report`: Print JSON signal state distribution summary.
+- `--naming`: Output column format (`code` [default] or `semantic`).
 
 ### 2. `inspect`
 Inspects and validates an OHLCV dataset.
@@ -204,7 +243,7 @@ uv run signalx stats datasets/sample_signals.parquet --json
 ```
 
 ### 4. `list`
-Lists registered signals and descriptions.
+Lists registered signals, codes, and descriptions.
 ```bash
 # List all 172 signals
 uv run signalx list
@@ -252,11 +291,14 @@ total_bullish_score = (numeric_scores == 1).sum(axis=1)
 ## Development & AI Documentation
 
 ```bash
-# Run the test suite (175 tests in < 10s)
+# Run the full test suite
 uv run pytest -v
 
 # Run code linter
 uv run ruff check .
+
+# Format code
+uv run ruff format .
 
 # Generate sample synthetic datasets
 uv run python scripts/prepare_sample_dataset.py

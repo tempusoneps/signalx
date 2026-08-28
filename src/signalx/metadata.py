@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
+
 VALID_CATEGORIES: frozenset[str] = frozenset(
     {
         "trend",
@@ -19,6 +21,7 @@ VALID_CATEGORIES: frozenset[str] = frozenset(
 class SignalMetadata:
     """Metadata describing a standardized trading signal."""
 
+    code: str
     name: str
     category: str
     description: str
@@ -28,9 +31,11 @@ class SignalMetadata:
 
 
 SIGNAL_CATALOG: dict[str, SignalMetadata] = {}
+SIGNAL_CODE_CATALOG: dict[str, SignalMetadata] = {}
 
 
 def register_signal(
+    code: str,
     name: str,
     category: str,
     description: str,
@@ -38,8 +43,10 @@ def register_signal(
     buy_trigger: str,
     sell_trigger: str,
 ) -> None:
-    """Register a signal in the global SIGNAL_CATALOG with full metadata validation."""
-    if not isinstance(name, str) or not name.endswith("_signal"):
+    """Register a signal in global catalogs with full metadata validation."""
+    if not isinstance(code, str) or not code.endswith("_signal") or not code.strip():
+        raise ValueError(f"Signal code '{code}' must end with '_signal'")
+    if not isinstance(name, str) or not name.endswith("_signal") or not name.strip():
         raise ValueError(f"Signal name '{name}' must end with '_signal'")
     if category not in VALID_CATEGORIES:
         raise ValueError(
@@ -54,14 +61,17 @@ def register_signal(
     if not isinstance(sell_trigger, str) or not sell_trigger.strip():
         raise ValueError("sell_trigger cannot be empty")
 
-    SIGNAL_CATALOG[name] = SignalMetadata(
-        name=name,
+    meta = SignalMetadata(
+        code=code.strip(),
+        name=name.strip(),
         category=category,
         description=description.strip(),
         library=library.strip(),
         buy_trigger=buy_trigger.strip(),
         sell_trigger=sell_trigger.strip(),
     )
+    SIGNAL_CATALOG[name] = meta
+    SIGNAL_CODE_CATALOG[code] = meta
 
 
 def get_signals_by_category(category: str) -> list[SignalMetadata]:
@@ -74,9 +84,39 @@ def list_categories() -> list[str]:
     return sorted(list(VALID_CATEGORIES))
 
 
-def get_signal_metadata(name: str) -> SignalMetadata | None:
+def get_signal_by_code(code: str) -> SignalMetadata | None:
+    """Retrieve metadata for a specific signal code, or None if not found."""
+    return SIGNAL_CODE_CATALOG.get(code)
+
+
+def get_signal_by_name(name: str) -> SignalMetadata | None:
     """Retrieve metadata for a specific signal name, or None if not found."""
     return SIGNAL_CATALOG.get(name)
+
+
+def get_signal_metadata(key: str) -> SignalMetadata | None:
+    """Retrieve metadata by signal code first, then by signal name, or None if not found."""
+    return SIGNAL_CODE_CATALOG.get(key) or SIGNAL_CATALOG.get(key)
+
+
+def get_code_to_name_map() -> dict[str, str]:
+    """Return mapping from coded signal names to semantic signal names."""
+    return {meta.code: meta.name for meta in SIGNAL_CATALOG.values()}
+
+
+def get_name_to_code_map() -> dict[str, str]:
+    """Return mapping from semantic signal names to coded signal names."""
+    return {meta.name: meta.code for meta in SIGNAL_CATALOG.values()}
+
+
+def to_code_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename any semantic signal columns in DataFrame to coded names, preserving non-signal columns."""
+    return df.rename(columns=get_name_to_code_map())
+
+
+def to_semantic_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename any coded signal columns in DataFrame to semantic names, preserving non-signal columns."""
+    return df.rename(columns=get_code_to_name_map())
 
 
 def _initialize_default_catalog() -> None:
@@ -373,8 +413,9 @@ def _initialize_default_catalog() -> None:
             "TII 14 < 20 (Strong downward trend intensity)",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in trend_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(trend_definitions, start=1):
         register_signal(
+            code=f"TRD{idx:03d}_signal",
             name=name,
             category="trend",
             description=desc,
@@ -598,8 +639,9 @@ def _initialize_default_catalog() -> None:
             "10-bar return < -5.0%",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in mom_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mom_definitions, start=1):
         register_signal(
+            code=f"MOM{idx:03d}_signal",
             name=name,
             category="momentum",
             description=desc,
@@ -837,8 +879,9 @@ def _initialize_default_catalog() -> None:
             "Close < SMA20 * 0.975 (Lower envelope breakdown)",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in vol_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_definitions, start=1):
         register_signal(
+            code=f"VOL{idx:03d}_signal",
             name=name,
             category="volatility",
             description=desc,
@@ -978,8 +1021,9 @@ def _initialize_default_catalog() -> None:
             "Close crosses below 20-period AMV baseline",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in vol_flow_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_flow_definitions, start=1):
         register_signal(
+            code=f"VLM{idx:03d}_signal",
             name=name,
             category="volume",
             description=desc,
@@ -1182,8 +1226,9 @@ def _initialize_default_catalog() -> None:
             "Close < Close[1] < Close[2] on declining Volume (Bearish exhaustion push)",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in cdl_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(cdl_definitions, start=1):
         register_signal(
+            code=f"CDL{idx:03d}_signal",
             name=name,
             category="candlestick",
             description=desc,
@@ -1309,8 +1354,9 @@ def _initialize_default_catalog() -> None:
             "Close > SMA20 * 1.05 (Stretched premium > 5% above SMA20)",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in stat_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(stat_definitions, start=1):
         register_signal(
+            code=f"STA{idx:03d}_signal",
             name=name,
             category="statistical",
             description=desc,
@@ -1380,8 +1426,9 @@ def _initialize_default_catalog() -> None:
             "MACD Histogram peak reversal in positive zone with bearish engulfing close",
         ),
     ]
-    for name, desc, lib, buy_t, sell_t in comp_definitions:
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(comp_definitions, start=1):
         register_signal(
+            code=f"CMP{idx:03d}_signal",
             name=name,
             category="composite",
             description=desc,
@@ -1396,10 +1443,17 @@ _initialize_default_catalog()
 
 __all__ = [
     "SIGNAL_CATALOG",
+    "SIGNAL_CODE_CATALOG",
     "VALID_CATEGORIES",
     "SignalMetadata",
+    "get_code_to_name_map",
+    "get_name_to_code_map",
+    "get_signal_by_code",
+    "get_signal_by_name",
     "get_signal_metadata",
     "get_signals_by_category",
     "list_categories",
     "register_signal",
+    "to_code_names",
+    "to_semantic_names",
 ]
