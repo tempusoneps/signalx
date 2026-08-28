@@ -1,0 +1,411 @@
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from signalx.constants import ALL_SIGNAL_STATES, SignalState
+from signalx.signals.candlestick import generate_candlestick_signals
+from signalx.signals.composite import (
+    _calc_breakout_volume_confirmed,
+    _calc_ma_consensus,
+    _calc_master_ensemble,
+    _calc_mean_reversion_confluence,
+    _calc_momentum_consensus,
+    _calc_trend_consensus,
+    _calc_trend_momentum_align,
+    generate_composite_signals,
+)
+from signalx.signals.momentum import generate_momentum_signals
+from signalx.signals.statistical import generate_statistical_signals
+from signalx.signals.trend import generate_trend_signals
+from signalx.signals.volatility import generate_volatility_signals
+from signalx.signals.volume import generate_volume_signals
+
+
+def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
+    """Generate synthetic OHLCV dataset with strong trends and mean reversion regimes."""
+    np.random.seed(seed)
+    returns = np.random.randn(n) * 0.02
+
+    if n >= 150:
+        # Bullish regime
+        returns[30:60] = 0.02 + np.abs(np.random.randn(30)) * 0.005
+        # Bearish regime
+        returns[80:110] = -0.02 - np.abs(np.random.randn(30)) * 0.005
+
+    close = 100.0 * np.exp(np.cumsum(returns))
+    high = close * (1.0 + np.random.uniform(0.005, 0.03, n))
+    low = close * (1.0 - np.random.uniform(0.005, 0.03, n))
+    open_p = low + (high - low) * np.random.uniform(0.2, 0.8, n)
+
+    base_volume = np.random.randint(1000, 20000, n).astype(float)
+    if n >= 150:
+        base_volume[30:60] *= 3.0
+        base_volume[80:110] *= 3.0
+
+    return pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": base_volume,
+        }
+    )
+
+
+EXPECTED_COMPOSITE_SIGNALS = [
+    "comp_trend_consensus_signal",
+    "comp_momentum_consensus_signal",
+    "comp_master_ensemble_signal",
+    "comp_ma_consensus_signal",
+    "comp_trend_momentum_align_signal",
+    "comp_breakout_volume_confirmed_signal",
+    "comp_mean_reversion_confluence_signal",
+]
+
+
+def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
+    """Helper to generate all 6 family signal DataFrames concatenated."""
+    trend = generate_trend_signals(df)
+    mom = generate_momentum_signals(df)
+    vol = generate_volatility_signals(df)
+    volume = generate_volume_signals(df)
+    cdl = generate_candlestick_signals(df)
+    stat = generate_statistical_signals(df)
+    return pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
+
+
+def test_composite_signals_all_7_columns_present():
+    """Verify generate_composite_signals produces exactly the 7 expected composite signals."""
+    df = make_synthetic_ohlcv(250)
+    intermediate = generate_all_intermediate(df)
+    res = generate_composite_signals(df, intermediate)
+
+    assert len(EXPECTED_COMPOSITE_SIGNALS) == 7
+    assert isinstance(res, pd.DataFrame)
+    assert len(res) == 250
+    assert len(res.columns) == 7
+    assert list(res.index) == list(df.index)
+
+    for col in EXPECTED_COMPOSITE_SIGNALS:
+        assert col in res.columns, f"Expected column {col} missing from output"
+        assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+
+
+def test_composite_signals_all_states_valid():
+    """Verify that every value in every signal column is strictly within ALL_SIGNAL_STATES and has no NaNs."""
+    df = make_synthetic_ohlcv(250)
+    intermediate = generate_all_intermediate(df)
+    res = generate_composite_signals(df, intermediate)
+
+    for col in res.columns:
+        assert not res[col].isna().any(), f"Column {col} contains unexpected NaN values"
+        unique_vals = set(res[col].unique())
+        assert unique_vals.issubset(ALL_SIGNAL_STATES), (
+            f"Column {col} contains invalid states: {unique_vals - ALL_SIGNAL_STATES}"
+        )
+
+
+def test_composite_signals_state_occurrences():
+    """Verify that BUY, SELL, HOLD, and NONE states occur in the output across composite signals."""
+    df = make_synthetic_ohlcv(300)
+    intermediate = generate_all_intermediate(df)
+    res = generate_composite_signals(df, intermediate)
+
+    all_values = set()
+    for col in res.columns:
+        all_values.update(res[col].unique())
+
+    assert SignalState.BUY in all_values
+    assert SignalState.SELL in all_values
+    assert SignalState.HOLD in all_values
+    assert SignalState.NONE in all_values
+
+
+def test_composite_signals_without_intermediate():
+    """Verify generate_composite_signals auto-computes intermediate signals if None is passed."""
+    df = make_synthetic_ohlcv(100)
+    res = generate_composite_signals(df, None)
+
+    assert len(res.columns) == 7
+    assert len(res) == 100
+    for col in EXPECTED_COMPOSITE_SIGNALS:
+        assert col in res.columns
+        assert set(res[col].unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_composite_signals_short_dataframe():
+    """Verify graceful execution without exceptions when given a short dataframe."""
+    df_short = make_synthetic_ohlcv(10)
+    intermediate = generate_all_intermediate(df_short)
+    res = generate_composite_signals(df_short, intermediate)
+
+    assert isinstance(res, pd.DataFrame)
+    assert len(res) == 10
+    assert len(res.columns) == 7
+
+    for col in res.columns:
+        assert not res[col].isna().any()
+        unique_vals = set(res[col].unique())
+        assert unique_vals.issubset(ALL_SIGNAL_STATES)
+
+
+def test_composite_signals_empty_dataframe():
+    """Verify handling of empty dataframe."""
+    df_empty = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    empty_intermediate = pd.DataFrame()
+    res = generate_composite_signals(df_empty, empty_intermediate)
+
+    assert isinstance(res, pd.DataFrame)
+    assert len(res) == 0
+    assert len(res.columns) == 7
+    for col in res.columns:
+        assert col.endswith("_signal")
+
+
+def test_composite_signals_normalization():
+    """Verify uppercase OHLCV columns normalization in composite signals."""
+    df = make_synthetic_ohlcv(50)
+    df_upper = df.rename(
+        columns={"open": "OPEN", "high": "HIGH", "low": "LOW", "close": "CLOSE", "volume": "VOLUME"}
+    )
+    res = generate_composite_signals(df_upper, None)
+
+    assert len(res) == 50
+    assert len(res.columns) == 7
+
+
+def test_composite_signals_missing_columns():
+    """Verify missing OHLCV columns raise ValueError."""
+    df_invalid = pd.DataFrame({"open": [1.0], "high": [2.0], "low": [0.5]})
+    with pytest.raises(ValueError, match="Missing required OHLCV column"):
+        generate_composite_signals(df_invalid, None)
+
+
+def test_composite_signals_datetime_index_preserved():
+    """Verify DatetimeIndex is preserved in output."""
+    dates = pd.date_range("2024-01-01", periods=100, freq="D")
+    df = make_synthetic_ohlcv(100)
+    df.index = dates
+    intermediate = generate_all_intermediate(df)
+    res = generate_composite_signals(df, intermediate)
+
+    assert isinstance(res.index, pd.DatetimeIndex)
+    assert (res.index == dates).all()
+
+
+def test_trend_consensus_direct():
+    """Verify trend majority vote consensus logic."""
+    idx = range(4)
+    # Row 0: 3 BUY, 1 SELL -> BUY (>50%)
+    # Row 1: 1 BUY, 3 SELL -> SELL (>50%)
+    # Row 2: 2 BUY, 2 SELL -> HOLD (neither >50%)
+    # Row 3: 4 NONE -> NONE
+    df_trend = pd.DataFrame(
+        {
+            "trend_sig1_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.BUY,
+                SignalState.NONE,
+            ],
+            "trend_sig2_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.BUY,
+                SignalState.NONE,
+            ],
+            "trend_sig3_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.SELL,
+                SignalState.NONE,
+            ],
+            "trend_sig4_signal": [
+                SignalState.SELL,
+                SignalState.SELL,
+                SignalState.SELL,
+                SignalState.NONE,
+            ],
+        },
+        index=idx,
+    )
+    sig = _calc_trend_consensus(df_trend)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+    assert sig.iloc[3] == SignalState.NONE
+
+
+def test_momentum_consensus_direct():
+    """Verify momentum majority vote consensus logic."""
+    idx = range(3)
+    df_mom = pd.DataFrame(
+        {
+            "mom_sig1_signal": [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            "mom_sig2_signal": [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            "mom_sig3_signal": [SignalState.BUY, SignalState.HOLD, SignalState.NONE],
+        },
+        index=idx,
+    )
+    sig = _calc_momentum_consensus(df_mom)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+
+
+def test_master_ensemble_direct():
+    """Verify master ensemble broad consensus logic."""
+    idx = range(4)
+    # 10 signal columns
+    # Row 0: 4 BUY (40% >= 35%), 0 SELL -> BUY
+    # Row 1: 0 BUY, 5 SELL (50% >= 35%) -> SELL
+    # Row 2: 2 BUY (20%), 2 SELL (20%) -> HOLD
+    # Row 3: all NONE -> NONE
+    data = {}
+    for i in range(10):
+        data[f"sig_{i}_signal"] = [SignalState.HOLD] * 4
+
+    df_signals = pd.DataFrame(data, index=idx)
+    # Row 0
+    for i in range(4):
+        df_signals.iloc[0, i] = SignalState.BUY
+    # Row 1
+    for i in range(5):
+        df_signals.iloc[1, i] = SignalState.SELL
+    # Row 2
+    df_signals.iloc[2, 0] = SignalState.BUY
+    df_signals.iloc[2, 1] = SignalState.BUY
+    df_signals.iloc[2, 2] = SignalState.SELL
+    df_signals.iloc[2, 3] = SignalState.SELL
+    # Row 3
+    for i in range(10):
+        df_signals.iloc[3, i] = SignalState.NONE
+
+    sig = _calc_master_ensemble(df_signals)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+    assert sig.iloc[3] == SignalState.NONE
+
+
+def test_ma_consensus_direct():
+    """Verify moving average consensus logic."""
+    idx = range(3)
+    df_ma = pd.DataFrame(
+        {
+            "trend_sma_cross_5_20_signal": [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            "trend_ema_cross_9_21_signal": [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            "trend_price_above_sma20_signal": [SignalState.BUY, SignalState.SELL, SignalState.NONE],
+        },
+        index=idx,
+    )
+    sig = _calc_ma_consensus(df_ma)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+
+
+def test_trend_momentum_align_direct():
+    """Verify trend & momentum alignment confluence logic."""
+    idx = range(4)
+    trend_sig = pd.Series(
+        [SignalState.BUY, SignalState.SELL, SignalState.BUY, SignalState.NONE], index=idx
+    )
+    mom_sig = pd.Series(
+        [SignalState.BUY, SignalState.SELL, SignalState.SELL, SignalState.NONE], index=idx
+    )
+
+    align_sig = _calc_trend_momentum_align(trend_sig, mom_sig)
+    assert align_sig.iloc[0] == SignalState.BUY
+    assert align_sig.iloc[1] == SignalState.SELL
+    assert align_sig.iloc[2] == SignalState.HOLD
+    assert align_sig.iloc[3] == SignalState.NONE
+
+
+def test_breakout_volume_confirmed_direct():
+    """Verify breakout confirmed with volume spike logic."""
+    idx = range(4)
+    df_vol = pd.DataFrame(
+        {
+            "vol_donchian_breakout_20_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.BUY,
+                SignalState.NONE,
+            ],
+            "vol_bb_breakout_20_20_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.HOLD,
+                SignalState.NONE,
+            ],
+            "volume_spike_direction_20_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.NONE,
+                SignalState.NONE,
+            ],
+        },
+        index=idx,
+    )
+    sig = _calc_breakout_volume_confirmed(df_vol)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+    assert sig.iloc[3] == SignalState.NONE
+
+
+def test_mean_reversion_confluence_direct():
+    """Verify multi-oscillator mean reversion confluence logic."""
+    idx = range(4)
+    df_mr = pd.DataFrame(
+        {
+            "mom_rsi_ob_os_14_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.BUY,
+                SignalState.NONE,
+            ],
+            "vol_bb_bounce_20_20_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.HOLD,
+                SignalState.NONE,
+            ],
+            "stat_price_zscore_20_signal": [
+                SignalState.BUY,
+                SignalState.SELL,
+                SignalState.HOLD,
+                SignalState.NONE,
+            ],
+        },
+        index=idx,
+    )
+    sig = _calc_mean_reversion_confluence(df_mr)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+    assert sig.iloc[3] == SignalState.NONE
+
+
+def test_composite_helpers_edge_cases():
+    """Verify helper functions handle empty dataframes cleanly."""
+    empty_df = pd.DataFrame()
+    assert len(_calc_trend_consensus(empty_df)) == 0
+    assert len(_calc_momentum_consensus(empty_df)) == 0
+    assert len(_calc_master_ensemble(empty_df)) == 0
+    assert len(_calc_ma_consensus(empty_df)) == 0
+    assert len(_calc_trend_momentum_align(pd.Series(dtype=str), pd.Series(dtype=str))) == 0
+    assert len(_calc_breakout_volume_confirmed(empty_df)) == 0
+    assert len(_calc_mean_reversion_confluence(empty_df)) == 0
+
+
+def test_signals_package_export():
+    """Verify generate_composite_signals is properly exported in signalx.signals."""
+    import signalx.signals
+
+    assert hasattr(signalx.signals, "generate_composite_signals")
+    assert callable(signalx.signals.generate_composite_signals)
