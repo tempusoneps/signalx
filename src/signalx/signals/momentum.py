@@ -40,6 +40,14 @@ MOMENTUM_SIGNAL_COLUMNS = [
     "mom_shift_3_bar_signal",
     "mom_return_momentum_5_signal",
     "mom_extreme_move_10_signal",
+    "mom_rmi_ob_os_14_signal",
+    "mom_dmi_variable_lookback_signal",
+    "mom_coppock_curve_zero_cross_signal",
+    "mom_stoch_momentum_index_cross_signal",
+    "mom_schaff_trend_cycle_cross_signal",
+    "mom_cmo_divergence_signal",
+    "mom_kst_oscillator_cross_signal",
+    "mom_demarker_indicator_cross_signal",
 ]
 
 
@@ -341,8 +349,347 @@ def _calc_return_threshold(close: pd.Series, lookback: int, threshold: float) ->
     )
 
 
+def _calc_threshold_reversal(val: pd.Series, lower: float = 30.0, upper: float = 70.0) -> pd.Series:
+    """Helper to detect indicator crossing back inside oversold/overbought thresholds.
+
+    Crossing above `lower` from oversold (val_prev <= lower and val > lower) -> BUY.
+    Crossing below `upper` from overbought (val_prev >= upper and val < upper) -> SELL.
+    When in normal holding range -> HOLD.
+    """
+    v = val.to_numpy(dtype=float, na_value=np.nan)
+    prev_v = val.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(v)
+    prev_valid = ~np.isnan(prev_v)
+
+    cross_up = valid & prev_valid & (prev_v <= lower) & (v > lower)
+    cross_down = valid & prev_valid & (prev_v >= upper) & (v < upper)
+
+    condlist = [
+        cross_up,
+        cross_down,
+        valid,
+    ]
+    choicelist = [
+        SignalState.BUY,
+        SignalState.SELL,
+        SignalState.HOLD,
+    ]
+    res = np.select(condlist, choicelist, default=SignalState.NONE)
+    return pd.Series(res, index=val.index, dtype=str)
+
+
+def _calc_rmi(close: pd.Series, length: int = 14, mom: int = 5) -> pd.Series:
+    """Calculate Relative Momentum Index (RMI)."""
+    if len(close) < length + mom:
+        return pd.Series(np.nan, index=close.index, dtype=float)
+    diff = close.diff(mom)
+    up = diff.clip(lower=0.0)
+    down = (-diff).clip(lower=0.0)
+    rma_up = up.ewm(alpha=1.0 / length, adjust=False).mean()
+    rma_down = down.ewm(alpha=1.0 / length, adjust=False).mean()
+    denom = (rma_up + rma_down).replace(0, np.nan)
+    rmi = 100.0 * (rma_up / denom)
+    rmi.iloc[: length + mom - 1] = np.nan
+    return rmi
+
+
+def _calc_dmi(
+    close: pd.Series, base_length: int = 14, min_len: int = 5, max_len: int = 30
+) -> pd.Series:
+    """Calculate Chande's Dynamic Momentum Index (DMI)."""
+    n = len(close)
+    if n < max_len:
+        return pd.Series(np.nan, index=close.index, dtype=float)
+
+    c_arr = close.to_numpy(dtype=float)
+    sd = close.rolling(5).std().to_numpy(dtype=float)
+    sma_sd = pd.Series(sd).rolling(10).mean().to_numpy(dtype=float)
+
+    diff = np.diff(c_arr, prepend=np.nan)
+    pos = np.where(diff > 0, diff, 0.0)
+    neg = np.where(diff < 0, -diff, 0.0)
+
+    dmi = np.full(n, np.nan, dtype=float)
+    pos_ema = 0.0
+    neg_ema = 0.0
+
+    for i in range(1, n):
+        if np.isnan(sma_sd[i]) or sma_sd[i] == 0:
+            vi = 1.0
+        else:
+            vi = sd[i] / sma_sd[i]
+
+        t = int(np.clip(round(base_length / max(vi, 0.01)), min_len, max_len))
+        alpha = 1.0 / t
+
+        if i == 1:
+            pos_ema = pos[i]
+            neg_ema = neg[i]
+        else:
+            pos_ema = alpha * pos[i] + (1.0 - alpha) * pos_ema
+            neg_ema = alpha * neg[i] + (1.0 - alpha) * neg_ema
+
+        denom = pos_ema + neg_ema
+        if denom > 0 and i >= 15:
+            dmi[i] = 100.0 * pos_ema / denom
+        elif i >= 15:
+            dmi[i] = 50.0
+
+    return pd.Series(dmi, index=close.index, dtype=float)
+
+
+def _calc_coppock(close: pd.Series, length: int = 10, fast: int = 11, slow: int = 14) -> pd.Series:
+    """Calculate Coppock Curve."""
+    if len(close) >= slow + length:
+        try:
+            res = pta.coppock(close, length=length, fast=fast, slow=slow)
+            if res is not None and isinstance(res, pd.Series) and not res.empty:
+                return res
+        except Exception:
+            pass
+
+    if len(close) < slow + length:
+        return pd.Series(np.nan, index=close.index, dtype=float)
+
+    roc_fast = close.pct_change(fast) * 100.0
+    roc_slow = close.pct_change(slow) * 100.0
+    roc_sum = roc_fast + roc_slow
+
+    weights = np.arange(1, length + 1)
+    wma = roc_sum.rolling(length).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+    return wma
+
+
+def _calc_smi(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    fast: int = 13,
+    slow: int = 25,
+    signal: int = 2,
+) -> tuple[pd.Series, pd.Series]:
+    """Calculate Stochastic Momentum Index (SMI) and Signal line."""
+    if len(close) >= max(fast, slow):
+        try:
+            res = pta.smi(
+                close=close,
+                high=high,
+                low=low,
+                fast=fast,
+                slow=slow,
+                signal=signal,
+                scalar=100.0,
+            )
+            if res is not None and isinstance(res, pd.DataFrame) and len(res.columns) >= 2:
+                smi_col = [
+                    c for c in res.columns if not c.startswith("SMIs") and not c.startswith("SMIo")
+                ][0]
+                sig_col = [c for c in res.columns if c.startswith("SMIs")][0]
+                return res[smi_col], res[sig_col]
+        except Exception:
+            pass
+
+    # Native fallback
+    n = len(close)
+    if n < max(fast, slow):
+        nan_s = pd.Series(np.nan, index=close.index)
+        return nan_s, nan_s
+
+    ll = low.rolling(fast).min()
+    hh = high.rolling(fast).max()
+    diff = close - (hh + ll) / 2.0
+    rdiff = hh - ll
+
+    ema1_diff = diff.ewm(span=slow, adjust=False).mean()
+    ema2_diff = ema1_diff.ewm(span=slow, adjust=False).mean()
+
+    ema1_rdiff = (rdiff / 2.0).ewm(span=slow, adjust=False).mean()
+    ema2_rdiff = ema1_rdiff.ewm(span=slow, adjust=False).mean()
+
+    denom = ema2_rdiff.replace(0, np.nan)
+    smi = 100.0 * (ema2_diff / denom)
+    smi_sig = smi.ewm(span=signal, adjust=False).mean()
+    return smi, smi_sig
+
+
+def _calc_smi_cross(
+    smi: pd.Series, smi_sig: pd.Series, lower: float = -40.0, upper: float = 40.0
+) -> pd.Series:
+    """Calculate SMI crossing signal line conditioned on oversold/overbought zones."""
+    s = smi.to_numpy(dtype=float, na_value=np.nan)
+    sig = smi_sig.to_numpy(dtype=float, na_value=np.nan)
+    prev_s = smi.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    prev_sig = smi_sig.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(s) & ~np.isnan(sig)
+    prev_valid = ~np.isnan(prev_s) & ~np.isnan(prev_sig)
+
+    cross_up = valid & prev_valid & (s > sig) & (prev_s <= prev_sig) & (s < lower)
+    cross_down = valid & prev_valid & (s < sig) & (prev_s >= prev_sig) & (s > upper)
+    bullish = valid & (s > sig)
+
+    condlist = [cross_up, cross_down, bullish, valid]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD, SignalState.NONE]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE), index=smi.index, dtype=str
+    )
+
+
+def _calc_schaff_tc(
+    close: pd.Series,
+    fast: int = 23,
+    slow: int = 50,
+    tc_length: int = 10,
+    factor: float = 0.5,
+) -> pd.Series:
+    """Calculate Schaff Trend Cycle (STC)."""
+    if len(close) >= slow + tc_length:
+        try:
+            res = pta.stc(close, fast=fast, slow=slow, tc_length=tc_length, factor=factor)
+            if res is not None and isinstance(res, pd.DataFrame) and len(res.columns) >= 1:
+                return res.iloc[:, 0]
+        except Exception:
+            pass
+
+    n = len(close)
+    if n < slow + tc_length:
+        return pd.Series(np.nan, index=close.index, dtype=float)
+
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    seed = ema_fast - ema_slow
+
+    lowest_xmacd = seed.rolling(tc_length).min()
+    highest_xmacd = seed.rolling(tc_length).max()
+    xmacd_range = (highest_xmacd - lowest_xmacd).replace(0, np.nan)
+
+    stoch1 = [0.0] * n
+    pf = [0.0] * n
+    stoch2 = [0.0] * n
+    pff = [0.0] * n
+
+    seed_arr = seed.to_numpy()
+    low_xmacd_arr = lowest_xmacd.to_numpy()
+    range_arr = xmacd_range.to_numpy()
+
+    for i in range(1, n):
+        if not np.isnan(range_arr[i]) and range_arr[i] > 0:
+            stoch1[i] = 100.0 * ((seed_arr[i] - low_xmacd_arr[i]) / range_arr[i])
+        else:
+            stoch1[i] = stoch1[i - 1]
+        pf[i] = round(pf[i - 1] + (factor * (stoch1[i] - pf[i - 1])), 8)
+
+        if i < tc_length:
+            lowest_pf = min(pf[: i + 1])
+            highest_pf = max(pf[: i + 1])
+        else:
+            lowest_pf = min(pf[i - tc_length + 1 : i + 1])
+            highest_pf = max(pf[i - tc_length + 1 : i + 1])
+
+        pf_range = highest_pf - lowest_pf if highest_pf - lowest_pf > 0 else 1.0
+        if pf_range > 0:
+            stoch2[i] = 100.0 * ((pf[i] - lowest_pf) / pf_range)
+        else:
+            stoch2[i] = stoch2[i - 1]
+        pff[i] = round(pff[i - 1] + (factor * (stoch2[i] - pff[i - 1])), 8)
+
+    stc_s = pd.Series(pff, index=close.index, dtype=float)
+    stc_s.iloc[: slow + tc_length - 1] = np.nan
+    return stc_s
+
+
+def _calc_cmo_divergence(
+    high: pd.Series, low: pd.Series, cmo: pd.Series, lookback: int = 5
+) -> pd.Series:
+    """Calculate 5-bar regular bullish/bearish CMO divergence."""
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = cmo.to_numpy(dtype=float, na_value=np.nan)
+
+    l_prev = low.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+    h_prev = high.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+    c_prev = cmo.shift(lookback).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(l_arr) & ~np.isnan(c_arr) & ~np.isnan(l_prev) & ~np.isnan(c_prev)
+
+    bull_div = valid & (l_arr < l_prev) & (c_arr > c_prev)
+    bear_div = valid & (h_arr > h_prev) & (c_arr < c_prev)
+    hold = valid & ~bull_div & ~bear_div
+
+    conds = [bull_div, bear_div, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=low.index, dtype=str
+    )
+
+
+def _calc_kst(
+    close: pd.Series,
+    roc1: int = 10,
+    roc2: int = 15,
+    roc3: int = 20,
+    roc4: int = 30,
+    sma1: int = 10,
+    sma2: int = 10,
+    sma3: int = 10,
+    sma4: int = 15,
+    signal: int = 9,
+) -> tuple[pd.Series, pd.Series]:
+    """Calculate Know Sure Thing (KST) oscillator and signal line."""
+    if len(close) >= roc4 + sma4 + signal:
+        try:
+            kst_ind = ta.trend.KSTIndicator(
+                close=close,
+                roc1=roc1,
+                roc2=roc2,
+                roc3=roc3,
+                roc4=roc4,
+                window1=sma1,
+                window2=sma2,
+                window3=sma3,
+                window4=sma4,
+                nsig=signal,
+                fillna=False,
+            )
+            return kst_ind.kst(), kst_ind.kst_sig()
+        except Exception:
+            pass
+
+    if len(close) < roc4 + sma4:
+        nan_s = pd.Series(np.nan, index=close.index)
+        return nan_s, nan_s
+
+    r1 = close.pct_change(roc1).rolling(sma1).mean() * 100.0 * 1
+    r2 = close.pct_change(roc2).rolling(sma2).mean() * 100.0 * 2
+    r3 = close.pct_change(roc3).rolling(sma3).mean() * 100.0 * 3
+    r4 = close.pct_change(roc4).rolling(sma4).mean() * 100.0 * 4
+    kst_line = r1 + r2 + r3 + r4
+    kst_signal = kst_line.rolling(signal).mean()
+    return kst_line, kst_signal
+
+
+def _calc_demarker(high: pd.Series, low: pd.Series, length: int = 14) -> pd.Series:
+    """Calculate Tom DeMarker Indicator (DeM)."""
+    if len(high) < length + 1:
+        return pd.Series(np.nan, index=high.index, dtype=float)
+
+    h_diff = high.diff()
+    l_diff = -low.diff()
+
+    demax = h_diff.clip(lower=0.0)
+    demin = l_diff.clip(lower=0.0)
+
+    demax_sma = demax.rolling(length).mean()
+    demin_sma = demin.rolling(length).mean()
+
+    denom = (demax_sma + demin_sma).replace(0, np.nan)
+    dem = demax_sma / denom
+    return dem
+
+
 def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 30 momentum and oscillator signals from OHLCV dataframe.
+    """Generate all 38 momentum and oscillator signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -354,7 +701,7 @@ def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 30 columns ending with '_signal', with values in
+        DataFrame containing 38 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -521,6 +868,53 @@ def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> 
         # 19. Extreme Move (10 bars > 5%) (1)
         signals["mom_extreme_move_10_signal"] = _calc_return_threshold(
             close, lookback=10, threshold=0.05
+        )
+        pbar.update(1)
+
+        # 20. Relative Momentum Index (RMI 14, 5) (1)
+        rmi14 = _calc_rmi(close, length=14, mom=5)
+        signals["mom_rmi_ob_os_14_signal"] = _calc_threshold_reversal(rmi14, lower=30.0, upper=70.0)
+        pbar.update(1)
+
+        # 21. Dynamic Momentum Index (DMI variable 5-30) (1)
+        dmi = _calc_dmi(close, base_length=14, min_len=5, max_len=30)
+        signals["mom_dmi_variable_lookback_signal"] = _calc_threshold_reversal(
+            dmi, lower=30.0, upper=70.0
+        )
+        pbar.update(1)
+
+        # 22. Coppock Curve Zero Crossover (1)
+        cop = _calc_coppock(close, length=10, fast=11, slow=14)
+        signals["mom_coppock_curve_zero_cross_signal"] = _crossover_signal(cop, centerline_zero)
+        pbar.update(1)
+
+        # 23. Stochastic Momentum Index (SMI 13, 25, 2) (1)
+        smi, smi_sig = _calc_smi(high=high, low=low, close=close, fast=13, slow=25, signal=2)
+        signals["mom_stoch_momentum_index_cross_signal"] = _calc_smi_cross(
+            smi, smi_sig, lower=-40.0, upper=40.0
+        )
+        pbar.update(1)
+
+        # 24. Schaff Trend Cycle (STC 23, 50, 10) (1)
+        stc = _calc_schaff_tc(close, fast=23, slow=50, tc_length=10, factor=0.5)
+        signals["mom_schaff_trend_cycle_cross_signal"] = _calc_threshold_reversal(
+            stc, lower=25.0, upper=75.0
+        )
+        pbar.update(1)
+
+        # 25. CMO Regular Divergence (5 bars) (1)
+        signals["mom_cmo_divergence_signal"] = _calc_cmo_divergence(high, low, cmo14, lookback=5)
+        pbar.update(1)
+
+        # 26. Know Sure Thing (KST) Oscillator Crossover (1)
+        kst_line, kst_sig = _calc_kst(close)
+        signals["mom_kst_oscillator_cross_signal"] = _crossover_signal(kst_line, kst_sig)
+        pbar.update(1)
+
+        # 27. Tom DeMarker Indicator (DeM 14) (1)
+        dem = _calc_demarker(high, low, length=14)
+        signals["mom_demarker_indicator_cross_signal"] = _calc_threshold_reversal(
+            dem, lower=0.30, upper=0.70
         )
         pbar.update(1)
 

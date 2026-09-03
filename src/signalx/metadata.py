@@ -509,7 +509,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 2. MOMENTUM SIGNALS (23 signals)
+    # 2. MOMENTUM SIGNALS (38 signals)
     # -------------------------------------------------------------------------
     mom_definitions = [
         (
@@ -721,6 +721,62 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "10-bar return > +5.0%",
             "10-bar return < -5.0%",
+        ),
+        (
+            "mom_rmi_ob_os_14_signal",
+            "Relative Momentum Index (14, 5) overbought (>70) and oversold (<30) thresholds",
+            "signalx_native",
+            "RMI 14 crosses above 30 from oversold zone",
+            "RMI 14 crosses below 70 from overbought zone",
+        ),
+        (
+            "mom_dmi_variable_lookback_signal",
+            "Dynamic Momentum Index (variable lookback 5-30) overbought (>70) and oversold (<30) thresholds",
+            "signalx_native",
+            "DMI crosses above 30 from oversold zone",
+            "DMI crosses below 70 from overbought zone",
+        ),
+        (
+            "mom_coppock_curve_zero_cross_signal",
+            "Coppock Curve zero centerline crossover",
+            "pandas_ta",
+            "Coppock Curve crosses above 0",
+            "Coppock Curve crosses below 0",
+        ),
+        (
+            "mom_stoch_momentum_index_cross_signal",
+            "Stochastic Momentum Index (SMI 13, 25, 2) signal line crossover in extreme zones",
+            "pandas_ta",
+            "SMI crosses above signal line when SMI < -40 (oversold)",
+            "SMI crosses below signal line when SMI > +40 (overbought)",
+        ),
+        (
+            "mom_schaff_trend_cycle_cross_signal",
+            "Schaff Trend Cycle (STC 23, 50, 10) 25/75 cycle threshold crossover",
+            "pandas_ta",
+            "STC crosses above 25 (bullish cycle initiation)",
+            "STC crosses below 75 (bearish cycle initiation)",
+        ),
+        (
+            "mom_cmo_divergence_signal",
+            "Chande Momentum Oscillator (CMO 14) 5-bar regular divergence",
+            "signalx_native",
+            "Low < Low[5] while CMO > CMO[5] (Bullish CMO divergence)",
+            "High > High[5] while CMO < CMO[5] (Bearish CMO divergence)",
+        ),
+        (
+            "mom_kst_oscillator_cross_signal",
+            "Know Sure Thing (KST) oscillator and 9-SMA signal line crossover",
+            "ta",
+            "KST line crosses above 9-SMA signal line",
+            "KST line crosses below 9-SMA signal line",
+        ),
+        (
+            "mom_demarker_indicator_cross_signal",
+            "Tom DeMarker Indicator (DeM 14) 0.30/0.70 threshold crossover",
+            "signalx_native",
+            "DeMarker 14 crosses above 0.30 from oversold zone",
+            "DeMarker 14 crosses below 0.70 from overbought zone",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mom_definitions, start=1):
