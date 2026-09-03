@@ -27,6 +27,16 @@ VOLUME_SIGNAL_COLUMNS = [
     "volume_trend_3_bar_signal",
     "volume_price_divergence_signal",
     "volume_amv_cross_20_signal",
+    "volume_klinger_osc_cross_signal",
+    "volume_elder_ray_bull_bear_signal",
+    "volume_climax_absorption_signal",
+    "volume_twiggs_money_flow_cross_signal",
+    "volume_nvi_pvi_cross_signal",
+    "volume_vwap_anchored_dev1_signal",
+    "volume_vwap_anchored_dev3_signal",
+    "volume_delta_proxy_surge_signal",
+    "volume_vwma_sma_divergence_signal",
+    "volume_volume_weighted_rsi_14_signal",
 ]
 
 
@@ -318,8 +328,304 @@ def _calc_amv(close: pd.Series, volume: pd.Series, length: int = 20) -> pd.Serie
     return _crossover_signal(close, vwap_roll)
 
 
+def _calc_klinger_oscillator(
+    high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series
+) -> pd.Series:
+    """Calculate Klinger Volume Oscillator (34, 55, 13) signal cross."""
+    n = len(close)
+    if n < 5:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    tp = (high + low + close) / 3.0
+    tp_arr = tp.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+
+    dm = h_arr - l_arr
+    trend = np.ones(n, dtype=float)
+    for i in range(1, n):
+        if np.isnan(tp_arr[i]) or np.isnan(tp_arr[i - 1]):
+            trend[i] = trend[i - 1]
+        elif tp_arr[i] > tp_arr[i - 1]:
+            trend[i] = 1.0
+        elif tp_arr[i] < tp_arr[i - 1]:
+            trend[i] = -1.0
+        else:
+            trend[i] = trend[i - 1]
+
+    cm = np.zeros(n, dtype=float)
+    cm[0] = dm[0] if not np.isnan(dm[0]) else 0.0
+    for i in range(1, n):
+        if trend[i] == trend[i - 1]:
+            cm[i] = cm[i - 1] + (dm[i] if not np.isnan(dm[i]) else 0.0)
+        else:
+            cm[i] = (dm[i - 1] if not np.isnan(dm[i - 1]) else 0.0) + (
+                dm[i] if not np.isnan(dm[i]) else 0.0
+            )
+
+    ratio = np.where(cm != 0, dm / cm, 0.0)
+    vf = v_arr * np.abs(2.0 * ratio - 1.0) * trend * 100.0
+    vf_s = pd.Series(vf, index=close.index)
+    kvo = vf_s.ewm(span=34, adjust=False).mean() - vf_s.ewm(span=55, adjust=False).mean()
+    kvo_signal = kvo.ewm(span=13, adjust=False).mean()
+    return _crossover_signal(kvo, kvo_signal)
+
+
+def _calc_elder_ray_bull_bear(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    """Calculate Elder Ray Bull & Bear Power signal."""
+    if len(close) < 2:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    ema13 = close.ewm(span=13, adjust=False).mean()
+    bull_power = high - ema13
+    bear_power = low - ema13
+
+    bp = bear_power.to_numpy(dtype=float, na_value=np.nan)
+    bp_prev = bear_power.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    bull = bull_power.to_numpy(dtype=float, na_value=np.nan)
+    bull_prev = bull_power.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(bp) & ~np.isnan(bp_prev) & ~np.isnan(bull) & ~np.isnan(bull_prev)
+    buy = valid & (bp < 0.0) & (bp > bp_prev) & (bull > 0.0)
+    sell = valid & (bull > 0.0) & (bull < bull_prev) & (bp < 0.0)
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_volume_climax_absorption(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+) -> pd.Series:
+    """Calculate Volume Climax Absorption signal (> 3.0x SMA20 with long wick absorption)."""
+    vol_sma = volume.rolling(window, min_periods=5).mean().to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(v)
+        & ~np.isnan(vol_sma)
+        & ~np.isnan(o)
+        & ~np.isnan(h)
+        & ~np.isnan(lo)
+        & ~np.isnan(c)
+    )
+    candle_range = h - lo
+    has_range = valid & (candle_range > 1e-9)
+    is_climax = has_range & (v >= 3.0 * vol_sma)
+
+    lower_wick = np.minimum(o, c) - lo
+    upper_wick = h - np.maximum(o, c)
+
+    bull = is_climax & (lower_wick >= 0.40 * candle_range) & (c > o)
+    bear = is_climax & (upper_wick >= 0.40 * candle_range) & (c < o)
+    hold = valid & ~bull & ~bear
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_twiggs_money_flow(
+    high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, length: int = 21
+) -> pd.Series:
+    """Calculate Twiggs Money Flow (21 period) zero centerline cross."""
+    c_prev = close.shift(1)
+    trh = np.maximum(high, c_prev)
+    trl = np.minimum(low, c_prev)
+    tr = trh - trl
+
+    adv = np.where(tr > 1e-9, volume * (2.0 * close - trl - trh) / tr, 0.0)
+    adv_s = pd.Series(adv, index=close.index)
+    ema_adv = adv_s.ewm(span=length, adjust=False).mean()
+    ema_vol = volume.ewm(span=length, adjust=False).mean().replace(0, np.nan)
+    tmf = (ema_adv / ema_vol).fillna(0.0)
+    return _crossover_signal(tmf, pd.Series(0.0, index=close.index))
+
+
+def _calc_nvi_cross(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """Calculate Negative Volume Index (NVI) 20-period EMA crossover."""
+    n = len(close)
+    if n < 2:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+
+    nvi = np.zeros(n, dtype=float)
+    nvi[0] = 1000.0
+    for i in range(1, n):
+        if (
+            np.isnan(c_arr[i])
+            or np.isnan(c_arr[i - 1])
+            or np.isnan(v_arr[i])
+            or np.isnan(v_arr[i - 1])
+        ):
+            nvi[i] = nvi[i - 1]
+        elif v_arr[i] < v_arr[i - 1] and c_arr[i - 1] != 0.0:
+            ret = (c_arr[i] - c_arr[i - 1]) / c_arr[i - 1]
+            nvi[i] = nvi[i - 1] + nvi[i - 1] * ret
+        else:
+            nvi[i] = nvi[i - 1]
+
+    nvi_s = pd.Series(nvi, index=close.index)
+    nvi_ema20 = nvi_s.ewm(span=20, adjust=False).mean()
+    return _crossover_signal(nvi_s, nvi_ema20)
+
+
+def _calc_vwap_dev1_bounce(
+    high: pd.Series, low: pd.Series, close: pd.Series, lower: pd.Series, upper: pd.Series
+) -> pd.Series:
+    """Calculate Rolling 20-period VWAP +-1.0 std band bounce & rejection."""
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    l_band = lower.to_numpy(dtype=float, na_value=np.nan)
+    u_band = upper.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(l_arr)
+        & ~np.isnan(h_arr)
+        & ~np.isnan(c_arr)
+        & ~np.isnan(l_band)
+        & ~np.isnan(u_band)
+    )
+    buy = valid & (l_arr <= l_band) & (c_arr > l_band)
+    sell = valid & (h_arr >= u_band) & (c_arr < u_band)
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_vwap_dev3_extreme(
+    high: pd.Series, low: pd.Series, close: pd.Series, lower: pd.Series, upper: pd.Series
+) -> pd.Series:
+    """Calculate Rolling 20-period VWAP +-3.0 std extreme touch/cross mean reversion."""
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    l_band = lower.to_numpy(dtype=float, na_value=np.nan)
+    u_band = upper.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(l_arr)
+        & ~np.isnan(h_arr)
+        & ~np.isnan(c_arr)
+        & ~np.isnan(l_band)
+        & ~np.isnan(u_band)
+    )
+    buy = valid & ((l_arr <= l_band) | (c_arr <= l_band))
+    sell = valid & ((h_arr >= u_band) | (c_arr >= u_band))
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_volume_delta_proxy_surge(
+    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series
+) -> pd.Series:
+    """Calculate Intrabar Delta Volume Proxy surge."""
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(o) & ~np.isnan(h) & ~np.isnan(lo) & ~np.isnan(c) & ~np.isnan(v)
+    rng = h - lo + 1e-9
+    delta_buy = v * (c - lo) / rng
+    delta_sell = v * (h - c) / rng
+
+    buy = valid & (delta_buy > 0.70 * v) & (c > o)
+    sell = valid & (delta_sell > 0.70 * v) & (c < o)
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_vwma_sma_divergence(close: pd.Series, volume: pd.Series, window: int = 20) -> pd.Series:
+    """Calculate VWMA(20) vs SMA(20) Divergence signal."""
+    pv = close * volume
+    vol_sum = volume.rolling(window, min_periods=5).sum()
+    pv_sum = pv.rolling(window, min_periods=5).sum()
+    sma = close.rolling(window, min_periods=5).mean()
+    vwma = (pv_sum / vol_sum.replace(0, np.nan)).fillna(sma)
+
+    vwma_arr = vwma.to_numpy(dtype=float, na_value=np.nan)
+    sma_arr = sma.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(vwma_arr) & ~np.isnan(sma_arr)
+    buy = valid & (vwma_arr > sma_arr * 1.005)
+    sell = valid & (vwma_arr < sma_arr * 0.995)
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_volume_weighted_rsi(close: pd.Series, volume: pd.Series, length: int = 14) -> pd.Series:
+    """Calculate Volume-Weighted RSI (14) overbought/oversold boundaries."""
+    delta = close.diff()
+    d_arr = delta.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+
+    u = np.where(d_arr > 0, d_arr * v_arr, 0.0)
+    d = np.where(d_arr < 0, -d_arr * v_arr, 0.0)
+
+    u_s = pd.Series(u, index=close.index)
+    d_s = pd.Series(d, index=close.index)
+
+    smooth_u = u_s.ewm(span=length, adjust=False).mean()
+    smooth_d = d_s.ewm(span=length, adjust=False).mean().replace(0, np.nan)
+    rs = (smooth_u / smooth_d).fillna(1.0)
+    vrsi = 100.0 - (100.0 / (1.0 + rs))
+
+    vrsi_arr = vrsi.to_numpy(dtype=float, na_value=np.nan)
+    vrsi_prev = vrsi.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(vrsi_arr) & ~np.isnan(vrsi_prev)
+    buy = valid & (vrsi_prev <= 30.0) & (vrsi_arr > 30.0)
+    sell = valid & (vrsi_prev >= 70.0) & (vrsi_arr < 70.0)
+    hold = valid & ~buy & ~sell
+
+    conds = [buy, sell, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
 def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 18 volume, flow, and VWAP signals from OHLCV dataframe.
+    """Generate all 28 volume, flow, and VWAP signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -331,7 +637,7 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 18 columns ending with '_signal', with values in
+        DataFrame containing 28 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -459,6 +765,64 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
 
         # 15. AMV Cross (1)
         signals["volume_amv_cross_20_signal"] = _calc_amv(close, volume, length=20)
+        pbar.update(1)
+
+        # 16. Klinger Volume Oscillator Cross (1)
+        signals["volume_klinger_osc_cross_signal"] = _calc_klinger_oscillator(
+            high, low, close, volume
+        )
+        pbar.update(1)
+
+        # 17. Elder Ray Bull / Bear Power (1)
+        signals["volume_elder_ray_bull_bear_signal"] = _calc_elder_ray_bull_bear(high, low, close)
+        pbar.update(1)
+
+        # 18. Volume Climax Absorption (1)
+        signals["volume_climax_absorption_signal"] = _calc_volume_climax_absorption(
+            open_p, high, low, close, volume, window=20
+        )
+        pbar.update(1)
+
+        # 19. Twiggs Money Flow Cross (1)
+        signals["volume_twiggs_money_flow_cross_signal"] = _calc_twiggs_money_flow(
+            high, low, close, volume, length=21
+        )
+        pbar.update(1)
+
+        # 20. Negative Volume Index EMA Cross (1)
+        signals["volume_nvi_pvi_cross_signal"] = _calc_nvi_cross(close, volume)
+        pbar.update(1)
+
+        # 21. Rolling VWAP +-1.0 Std Band Reversal (1)
+        _, vwap20_l1, vwap20_u1 = _calc_vwap_bands(high, low, close, volume, window=20, num_std=1.0)
+        signals["volume_vwap_anchored_dev1_signal"] = _calc_vwap_dev1_bounce(
+            high, low, close, vwap20_l1, vwap20_u1
+        )
+        pbar.update(1)
+
+        # 22. Rolling VWAP +-3.0 Std Band Extreme Mean Reversion (1)
+        _, vwap20_l3, vwap20_u3 = _calc_vwap_bands(high, low, close, volume, window=20, num_std=3.0)
+        signals["volume_vwap_anchored_dev3_signal"] = _calc_vwap_dev3_extreme(
+            high, low, close, vwap20_l3, vwap20_u3
+        )
+        pbar.update(1)
+
+        # 23. Delta Volume Proxy Surge (1)
+        signals["volume_delta_proxy_surge_signal"] = _calc_volume_delta_proxy_surge(
+            open_p, high, low, close, volume
+        )
+        pbar.update(1)
+
+        # 24. VWMA vs SMA Divergence (1)
+        signals["volume_vwma_sma_divergence_signal"] = _calc_vwma_sma_divergence(
+            close, volume, window=20
+        )
+        pbar.update(1)
+
+        # 25. Volume-Weighted RSI 14 (1)
+        signals["volume_volume_weighted_rsi_14_signal"] = _calc_volume_weighted_rsi(
+            close, volume, length=14
+        )
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index
