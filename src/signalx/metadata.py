@@ -735,7 +735,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 3. VOLATILITY SIGNALS (17 signals)
+    # 3. VOLATILITY SIGNALS (42 signals)
     # -------------------------------------------------------------------------
     vol_definitions = [
         (
@@ -961,6 +961,76 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "Close > SMA20 * 1.025 (Upper envelope breakout)",
             "Close < SMA20 * 0.975 (Lower envelope breakdown)",
+        ),
+        (
+            "vol_rvi_ob_os_14_signal",
+            "Relative Volatility Index (RVI 14 period) overbought/oversold crossover",
+            "signalx_native",
+            "RVI 14 crosses above 30 from oversold",
+            "RVI 14 crosses below 70 from overbought",
+        ),
+        (
+            "vol_garman_klass_expansion_signal",
+            "Garman-Klass Volatility Estimator rolling expansion surge",
+            "signalx_native",
+            "GK Volatility > 90th percentile and Close > Close[1]",
+            "GK Volatility > 90th percentile and Close < Close[1]",
+        ),
+        (
+            "vol_parkinson_volatility_surge_signal",
+            "Parkinson High-Low Volatility surge >= 1.8x SMA20",
+            "signalx_native",
+            "Parkinson Volatility >= 1.8 * SMA20(Park) and Close > Open",
+            "Parkinson Volatility >= 1.8 * SMA20(Park) and Close < Open",
+        ),
+        (
+            "vol_squeeze_momentum_pro_signal",
+            "LazyBear Squeeze Pro BB inside KC breakout with LinReg momentum",
+            "signalx_native",
+            "Squeeze releases (BB width > KC width) with positive momentum slope",
+            "Squeeze releases (BB width > KC width) with negative momentum slope",
+        ),
+        (
+            "vol_keltner_width_squeeze_signal",
+            "Keltner Channel Bandwidth compression (< 0.70x SMA20 Width)",
+            "signalx_native",
+            "KC Width < 0.70 * SMA20(KC Width) and Close >= SMA20",
+            "KC Width < 0.70 * SMA20(KC Width) and Close < SMA20",
+        ),
+        (
+            "vol_atr_ratio_fast_slow_signal",
+            "ATR Fast/Slow Ratio (ATR(5) / ATR(20) > 1.40) volatility explosion",
+            "signalx_native",
+            "ATR(5) / ATR(20) > 1.40 and Close > Close[1]",
+            "ATR(5) / ATR(20) > 1.40 and Close < Close[1]",
+        ),
+        (
+            "vol_chandelier_exit_reversal_signal",
+            "Chandelier Exit (22 period, 3.0 ATR) trailing stop direction reversal",
+            "signalx_native",
+            "Close flips above Short Stop (Lowest Low 22 + 3*ATR22)",
+            "Close drops below Long Stop (Highest High 22 - 3*ATR22)",
+        ),
+        (
+            "vol_mass_index_reversal_bulge_signal",
+            "Mass Index (25 period) reversal bulge (>27.0 then <26.5)",
+            "signalx_native",
+            "Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) rising",
+            "Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) falling",
+        ),
+        (
+            "vol_normalized_atr_stretch_signal",
+            "Normalized ATR (NATR = ATR(14)/Close * 100) extreme expansion >= 2.0x SMA20",
+            "signalx_native",
+            "NATR >= 2.0 * SMA20(NATR) and Close > Open",
+            "NATR >= 2.0 * SMA20(NATR) and Close < Open",
+        ),
+        (
+            "vol_dual_thrust_range_breakout_signal",
+            "Dual Thrust 5-period range breakout",
+            "signalx_native",
+            "Close > Open + 0.5 * Range(5)",
+            "Close < Open - 0.5 * Range(5)",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_definitions, start=1):

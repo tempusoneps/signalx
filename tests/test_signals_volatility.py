@@ -7,11 +7,21 @@ import pytest
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.volatility import (
     VOLATILITY_SIGNAL_COLUMNS,
+    _calc_atr_ratio_fast_slow,
     _calc_atr_trailing_stop,
     _calc_bb_bounce,
     _calc_chaikin_volatility,
+    _calc_chandelier_exit,
+    _calc_dual_thrust,
+    _calc_garman_klass,
     _calc_hv_ratio_breakout,
+    _calc_keltner_width_squeeze,
+    _calc_mass_index_reversal,
+    _calc_natr_stretch,
+    _calc_parkinson_surge,
     _calc_pct_b_reversal,
+    _calc_rvi_ob_os,
+    _calc_squeeze_momentum_pro,
     _calc_ttm_squeeze,
     generate_volatility_signals,
 )
@@ -46,15 +56,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLATILITY_SIGNALS = VOLATILITY_SIGNAL_COLUMNS
 
 
-def test_volatility_signals_all_17_columns_present():
-    """Verify generate_volatility_signals produces exactly the expected volatility signals."""
+def test_volatility_signals_all_42_columns_present():
+    """Verify generate_volatility_signals produces exactly 42 volatility signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volatility_signals(df)
 
-    assert len(EXPECTED_VOLATILITY_SIGNALS) == 32
+    assert len(EXPECTED_VOLATILITY_SIGNALS) == 42
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 32
+    assert len(res.columns) == 42
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLATILITY_SIGNALS:
@@ -97,7 +107,7 @@ def test_volatility_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 32
+    assert len(res.columns) == 42
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -112,7 +122,7 @@ def test_volatility_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 32
+    assert len(res.columns) == 42
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -132,7 +142,7 @@ def test_volatility_signals_normalization():
     res = generate_volatility_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 32
+    assert len(res.columns) == 42
 
 
 def test_volatility_signals_missing_columns():
@@ -261,3 +271,136 @@ def test_hv_ratio_breakout_direct():
     res = _calc_hv_ratio_breakout(close, window_fast=5, window_slow=20, threshold=1.2)
     assert isinstance(res, pd.Series)
     assert (res.iloc[30:33] == SignalState.BUY).all()
+
+
+def test_rvi_ob_os_direct():
+    """Verify _calc_rvi_ob_os helper crosses above 30 (BUY) and below 70 (SELL)."""
+    close = pd.Series(
+        [
+            100.0,
+            95.0,
+            90.0,
+            85.0,
+            80.0,
+            75.0,
+            70.0,
+            65.0,
+            60.0,
+            55.0,
+            50.0,
+            48.0,
+            47.0,
+            46.0,
+            50.0,
+            55.0,
+            60.0,
+        ]
+    )
+    res = _calc_rvi_ob_os(close, length=5)
+    assert isinstance(res, pd.Series)
+    assert set(res.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_garman_klass_expansion_direct():
+    """Verify _calc_garman_klass helper on volatility surge."""
+    open_p = pd.Series([100.0] * 25 + [100.0, 101.0, 102.0, 103.0, 104.0])
+    high = pd.Series([101.0] * 25 + [115.0, 120.0, 125.0, 130.0, 135.0])
+    low = pd.Series([99.0] * 25 + [90.0, 91.0, 92.0, 93.0, 94.0])
+    close = pd.Series([100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0])
+    res = _calc_garman_klass(open_p, high, low, close, window=20, quantile_threshold=0.90)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[26] == SignalState.BUY
+
+
+def test_parkinson_surge_direct():
+    """Verify _calc_parkinson_surge helper on high-low surge."""
+    open_p = pd.Series([100.0] * 25 + [100.0, 100.0])
+    high = pd.Series([101.0] * 25 + [120.0, 120.0])
+    low = pd.Series([99.0] * 25 + [90.0, 90.0])
+    close = pd.Series([100.0] * 25 + [115.0, 95.0])
+    res = _calc_parkinson_surge(open_p, high, low, close, window=20, multiplier=1.8)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[25] == SignalState.BUY
+    assert res.iloc[26] == SignalState.SELL
+
+
+def test_squeeze_momentum_pro_direct():
+    """Verify _calc_squeeze_momentum_pro helper."""
+    # Squeeze ON then releases with positive and negative slope
+    bb_w = pd.Series([1.0, 1.0, 3.0, 3.0])
+    kc_w = pd.Series([2.0, 2.0, 2.0, 2.0])
+    mom_slope = pd.Series([0.5, -0.5, 1.0, -1.0])
+    res = _calc_squeeze_momentum_pro(bb_w, kc_w, mom_slope)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[0] == SignalState.HOLD
+    assert res.iloc[1] == SignalState.HOLD
+    assert res.iloc[2] == SignalState.BUY
+    assert res.iloc[3] == SignalState.SELL
+
+
+def test_keltner_width_squeeze_direct():
+    """Verify _calc_keltner_width_squeeze helper."""
+    kc_w = pd.Series([10.0] * 20 + [5.0, 5.0])
+    close = pd.Series([100.0] * 20 + [105.0, 95.0])
+    sma20 = pd.Series([100.0] * 22)
+    res = _calc_keltner_width_squeeze(kc_w, close, sma20, window=20, ratio=0.70)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[20] == SignalState.BUY
+    assert res.iloc[21] == SignalState.SELL
+
+
+def test_atr_ratio_fast_slow_direct():
+    """Verify _calc_atr_ratio_fast_slow helper."""
+    high = pd.Series([101.0] * 25 + [110.0, 115.0, 90.0])
+    low = pd.Series([99.0] * 25 + [95.0, 90.0, 70.0])
+    close = pd.Series([100.0] * 25 + [108.0, 114.0, 75.0])
+    res = _calc_atr_ratio_fast_slow(high, low, close, fast=5, slow=20, threshold=1.40)
+    assert isinstance(res, pd.Series)
+    assert set(res.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_chandelier_exit_direct():
+    """Verify _calc_chandelier_exit helper."""
+    n = 35
+    close = pd.Series(np.linspace(100, 150, n))
+    high = close + 2.0
+    low = close - 2.0
+    res = _calc_chandelier_exit(high, low, close, length=22, multiplier=3.0)
+    assert isinstance(res, pd.Series)
+    assert set(res.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_mass_index_reversal_direct():
+    """Verify _calc_mass_index_reversal helper."""
+    n = 45
+    high = pd.Series(np.linspace(100, 150, n))
+    low = high - 5.0
+    close = high - 2.0
+    res = _calc_mass_index_reversal(high, low, close)
+    assert isinstance(res, pd.Series)
+    assert set(res.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_natr_stretch_direct():
+    """Verify _calc_natr_stretch helper."""
+    high = pd.Series([101.0] * 30 + [160.0, 160.0])
+    low = pd.Series([99.0] * 30 + [40.0, 40.0])
+    open_p = pd.Series([100.0] * 30 + [60.0, 140.0])
+    close = pd.Series([100.0] * 30 + [150.0, 50.0])
+    res = _calc_natr_stretch(open_p, high, low, close, window_atr=14, window_sma=20, multiplier=2.0)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[30] == SignalState.BUY
+    assert res.iloc[31] == SignalState.SELL
+
+
+def test_dual_thrust_direct():
+    """Verify _calc_dual_thrust helper."""
+    n = 20
+    open_p = pd.Series([100.0] * n)
+    high = pd.Series([102.0] * n)
+    low = pd.Series([98.0] * n)
+    close = pd.Series([100.0] * (n - 2) + [105.0, 95.0])
+    res = _calc_dual_thrust(open_p, high, low, close, length=5, k=0.5)
+    assert isinstance(res, pd.Series)
+    assert res.iloc[-2] == SignalState.BUY
+    assert res.iloc[-1] == SignalState.SELL
