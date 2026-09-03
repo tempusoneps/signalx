@@ -32,15 +32,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_TREND_SIGNALS = TREND_SIGNAL_COLUMNS
 
 
-def test_trend_signals_all_30_columns_present():
-    """Verify generate_trend_signals produces exactly the expected trend signals."""
+def test_trend_signals_all_columns_present():
+    """Verify generate_trend_signals produces exactly the expected 53 trend signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_trend_signals(df)
 
-    assert len(EXPECTED_TREND_SIGNALS) == 41
+    assert len(EXPECTED_TREND_SIGNALS) == 53
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 41
+    assert len(res.columns) == 53
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_TREND_SIGNALS:
@@ -83,7 +83,7 @@ def test_trend_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 41
+    assert len(res.columns) == 53
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -98,7 +98,7 @@ def test_trend_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 41
+    assert len(res.columns) == 53
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -112,7 +112,7 @@ def test_trend_signals_normalization():
     res = generate_trend_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 41
+    assert len(res.columns) == 53
 
 
 def test_trend_signals_missing_columns():
@@ -150,6 +150,8 @@ def test_trend_signals_bullish_and_bearish_trends():
     res_bull = generate_trend_signals(df_bull)
     assert (res_bull["trend_price_above_sma20_signal"].iloc[30:] == SignalState.BUY).all()
     assert (res_bull["trend_price_above_ema50_signal"].iloc[60:] == SignalState.BUY).all()
+    assert (res_bull["trend_supertrend_atr_20_5_signal"].iloc[30:] == SignalState.BUY).all()
+    assert (res_bull["trend_rainbow_ema_alignment_signal"].iloc[60:] == SignalState.BUY).all()
 
     # Clear bearish trend
     bear_close = np.linspace(200.0, 100.0, n)
@@ -165,3 +167,30 @@ def test_trend_signals_bullish_and_bearish_trends():
     res_bear = generate_trend_signals(df_bear)
     assert (res_bear["trend_price_above_sma20_signal"].iloc[30:] == SignalState.SELL).all()
     assert (res_bear["trend_price_above_ema50_signal"].iloc[60:] == SignalState.SELL).all()
+    assert (res_bear["trend_supertrend_atr_20_5_signal"].iloc[30:] == SignalState.SELL).all()
+    assert (res_bear["trend_rainbow_ema_alignment_signal"].iloc[60:] == SignalState.SELL).all()
+
+
+def test_new_dsp_and_trend_signals_present():
+    """Verify all 12 newly added DSP and trend signals are present and valid."""
+    new_signals = [
+        "trend_ehlers_super_smoother_cross_signal",
+        "trend_mcginley_dynamic_cross_signal",
+        "trend_gmma_ribbon_expansion_signal",
+        "trend_gmma_compression_breakout_signal",
+        "trend_rainbow_ema_alignment_signal",
+        "trend_ehlers_instantaneous_trend_signal",
+        "trend_coral_trend_filter_signal",
+        "trend_supertrend_atr_20_5_signal",
+        "trend_donchian_middle_cross_20_signal",
+        "trend_alligator_lips_jaw_cross_signal",
+        "trend_alma_cross_9_signal",
+        "trend_zero_lag_ema_cross_21_signal",
+    ]
+    df = make_synthetic_ohlcv(200)
+    res = generate_trend_signals(df)
+
+    for sig in new_signals:
+        assert sig in res.columns, f"New trend signal {sig} not found in output"
+        assert not res[sig].isna().any(), f"{sig} contains NaN values"
+        assert set(res[sig].unique()).issubset(ALL_SIGNAL_STATES), f"{sig} has invalid states"
