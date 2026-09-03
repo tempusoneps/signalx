@@ -51,6 +51,18 @@ TREND_SIGNAL_COLUMNS = [
     "trend_price_cross_sma20_signal",
     "trend_prev_bar_break_signal",
     "trend_tii_14_signal",
+    "trend_ehlers_super_smoother_cross_signal",
+    "trend_mcginley_dynamic_cross_signal",
+    "trend_gmma_ribbon_expansion_signal",
+    "trend_gmma_compression_breakout_signal",
+    "trend_rainbow_ema_alignment_signal",
+    "trend_ehlers_instantaneous_trend_signal",
+    "trend_coral_trend_filter_signal",
+    "trend_supertrend_atr_20_5_signal",
+    "trend_donchian_middle_cross_20_signal",
+    "trend_alligator_lips_jaw_cross_signal",
+    "trend_alma_cross_9_signal",
+    "trend_zero_lag_ema_cross_21_signal",
 ]
 
 
@@ -515,8 +527,235 @@ def _calc_ichimoku(
     return sig_tk, pd.Series(res_cloud, index=close.index, dtype=str)
 
 
+def _calc_ehlers_super_smoother(close: pd.Series, length: int = 10) -> pd.Series:
+    """Calculate Ehlers 2-Pole Super Smoother Filter."""
+    n = len(close)
+    if n == 0:
+        return pd.Series(dtype=float, index=close.index)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    ss = np.full(n, np.nan, dtype=float)
+
+    a1 = np.exp(-np.sqrt(2.0) * np.pi / length)
+    b1 = 2.0 * a1 * np.cos(np.sqrt(2.0) * np.pi / length)
+    c2 = b1
+    c3 = -a1 * a1
+    c1 = 1.0 - c2 - c3
+
+    for i in range(n):
+        if np.isnan(c_arr[i]):
+            continue
+        if i == 0 or np.isnan(ss[i - 1]):
+            ss[i] = c_arr[i]
+        elif i == 1 or np.isnan(ss[i - 2]):
+            ss[i] = c1 * c_arr[i] + c2 * ss[i - 1]
+        else:
+            ss[i] = c1 * c_arr[i] + c2 * ss[i - 1] + c3 * ss[i - 2]
+
+    return pd.Series(ss, index=close.index)
+
+
+def _calc_mcginley_dynamic(close: pd.Series, length: int = 14) -> pd.Series:
+    """Calculate McGinley Dynamic moving average."""
+    n = len(close)
+    if n == 0:
+        return pd.Series(dtype=float, index=close.index)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    md = np.full(n, np.nan, dtype=float)
+
+    for i in range(n):
+        if np.isnan(c_arr[i]):
+            continue
+        if i == 0 or np.isnan(md[i - 1]) or md[i - 1] <= 0:
+            md[i] = c_arr[i]
+        else:
+            prev_md = md[i - 1]
+            ratio = c_arr[i] / prev_md
+            denom = length * (ratio**4)
+            if denom == 0 or np.isnan(denom):
+                md[i] = prev_md
+            else:
+                md[i] = prev_md + (c_arr[i] - prev_md) / denom
+
+    return pd.Series(md, index=close.index)
+
+
+def _calc_gmma_ribbon_expansion(close: pd.Series) -> pd.Series:
+    """Calculate Guppy GMMA Ribbon Expansion signal."""
+    fast_periods = [3, 5, 8, 10, 12, 15]
+    slow_periods = [30, 35, 40, 45, 50, 60]
+
+    fast_emas = pd.DataFrame(
+        {f"f_{p}": close.ewm(span=p, adjust=False).mean() for p in fast_periods}
+    )
+    slow_emas = pd.DataFrame(
+        {f"s_{p}": close.ewm(span=p, adjust=False).mean() for p in slow_periods}
+    )
+
+    fast_min = fast_emas.min(axis=1)
+    fast_max = fast_emas.max(axis=1)
+    slow_min = slow_emas.min(axis=1)
+    slow_max = slow_emas.max(axis=1)
+
+    bull_spread = fast_min - slow_max
+    bear_spread = slow_min - fast_max
+
+    prev_bull_spread = bull_spread.shift(1)
+    prev_bear_spread = bear_spread.shift(1)
+
+    bull_expand = (fast_min > slow_max) & (bull_spread > prev_bull_spread)
+    bear_expand = (fast_max < slow_min) & (bear_spread > prev_bear_spread)
+    bull_hold = fast_min > slow_max
+
+    conds = [bull_expand, bear_expand, bull_hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_gmma_compression_breakout(close: pd.Series) -> pd.Series:
+    """Calculate GMMA Compression Breakout signal."""
+    periods = [3, 5, 8, 10, 12, 15, 30, 35, 40, 45, 50, 60]
+    emas = pd.DataFrame({f"e_{p}": close.ewm(span=p, adjust=False).mean() for p in periods})
+
+    ribbon_max = emas.max(axis=1)
+    ribbon_min = emas.min(axis=1)
+    spread_pct = (ribbon_max - ribbon_min) / ribbon_min.replace(0, np.nan)
+
+    compressed = spread_pct.rolling(3, min_periods=1).min() <= 0.015
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    r_max = ribbon_max.to_numpy(dtype=float, na_value=np.nan)
+    r_min = ribbon_min.to_numpy(dtype=float, na_value=np.nan)
+    comp = compressed.to_numpy(dtype=bool)
+
+    valid = ~np.isnan(c) & ~np.isnan(r_max) & ~np.isnan(r_min)
+    bull = valid & comp & (c > r_max)
+    bear = valid & comp & (c < r_min)
+    hold = valid & (c > r_max)
+
+    conds = [bull, bear, hold]
+    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_rainbow_ema_alignment(close: pd.Series) -> pd.Series:
+    """Calculate Rainbow 5-EMA Alignment signal."""
+    ema8 = close.ewm(span=8, adjust=False).mean().to_numpy(dtype=float, na_value=np.nan)
+    ema13 = close.ewm(span=13, adjust=False).mean().to_numpy(dtype=float, na_value=np.nan)
+    ema21 = close.ewm(span=21, adjust=False).mean().to_numpy(dtype=float, na_value=np.nan)
+    ema34 = close.ewm(span=34, adjust=False).mean().to_numpy(dtype=float, na_value=np.nan)
+    ema55 = close.ewm(span=55, adjust=False).mean().to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(ema8) & ~np.isnan(ema13) & ~np.isnan(ema21) & ~np.isnan(ema34) & ~np.isnan(ema55)
+    )
+    bull = valid & (ema8 > ema13) & (ema13 > ema21) & (ema21 > ema34) & (ema34 > ema55)
+    bear = valid & (ema8 < ema13) & (ema13 < ema21) & (ema21 < ema34) & (ema34 < ema55)
+
+    conds = [bull, bear]
+    choices = [SignalState.BUY, SignalState.SELL]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_ehlers_instantaneous_trend(
+    high: pd.Series, low: pd.Series, close: pd.Series, alpha: float = 0.07
+) -> pd.Series:
+    """Calculate Ehlers Instantaneous Trendline."""
+    n = len(close)
+    if n == 0:
+        return pd.Series(dtype=float, index=close.index)
+
+    price = ((high + low) / 2.0).to_numpy(dtype=float, na_value=np.nan)
+    itrend = np.full(n, np.nan, dtype=float)
+
+    a = alpha
+    a2 = a * a
+    c1 = a - a2 / 4.0
+    c2 = 0.5 * a2
+    c3 = -(a - 0.75 * a2)
+    d1 = 2.0 * (1.0 - a)
+    d2 = -((1.0 - a) ** 2)
+
+    for i in range(n):
+        if np.isnan(price[i]):
+            continue
+        if i < 2:
+            itrend[i] = price[i]
+        elif i < 7:
+            itrend[i] = (price[i] + 2.0 * price[i - 1] + price[i - 2]) / 4.0
+        else:
+            itrend[i] = (
+                c1 * price[i]
+                + c2 * price[i - 1]
+                + c3 * price[i - 2]
+                + d1 * itrend[i - 1]
+                + d2 * itrend[i - 2]
+            )
+
+    return pd.Series(itrend, index=close.index)
+
+
+def _calc_coral_trend_filter(close: pd.Series, length: int = 21, cd: float = 0.4) -> pd.Series:
+    """Calculate Coral Trend Filter slope signal."""
+    di = (length - 1) // 2 + 1
+    c1 = -(cd**3)
+    c2 = 3.0 * (cd**2) + 3.0 * (cd**3)
+    c3 = -6.0 * (cd**2) - 3.0 * cd - 3.0 * (cd**3)
+    c4 = 1.0 + 3.0 * cd + (cd**3) + 3.0 * (cd**2)
+
+    i1 = close.ewm(span=di, adjust=False).mean()
+    i2 = i1.ewm(span=di, adjust=False).mean()
+    i3 = i2.ewm(span=di, adjust=False).mean()
+    i4 = i3.ewm(span=di, adjust=False).mean()
+    i5 = i4.ewm(span=di, adjust=False).mean()
+    i6 = i5.ewm(span=di, adjust=False).mean()
+
+    coral = c1 * i6 + c2 * i5 + c3 * i4 + c4 * i3
+    coral_arr = coral.to_numpy(dtype=float, na_value=np.nan)
+    prev_coral = coral.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(coral_arr) & ~np.isnan(prev_coral)
+    bull = valid & (coral_arr > prev_coral)
+    bear = valid & (coral_arr < prev_coral)
+
+    conds = [bull, bear]
+    choices = [SignalState.BUY, SignalState.SELL]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_alma(
+    close: pd.Series, length: int = 9, sigma: float = 6.0, offset: float = 0.85
+) -> pd.Series:
+    """Calculate Arnaud Legoux Moving Average (ALMA) with fallback."""
+    try:
+        res = pta.alma(close, length=length, sigma=sigma, offset=offset)
+        if res is not None and isinstance(res, pd.Series) and not res.empty:
+            return res
+    except Exception:
+        pass
+    if len(close) < length or length <= 0:
+        return pd.Series(np.nan, index=close.index)
+    m = offset * (length - 1)
+    s = length / sigma
+    weights = np.exp(-((np.arange(length) - m) ** 2) / (2.0 * s * s))
+    weights /= weights.sum()
+    return close.rolling(length).apply(lambda x: np.dot(x, weights), raw=True)
+
+
+def _calc_zero_lag_ema(close: pd.Series, length: int = 21) -> pd.Series:
+    """Calculate Zero-Lag Exponential Moving Average (ZLEMA)."""
+    ema1 = close.ewm(span=length, adjust=False).mean()
+    ema2 = ema1.ewm(span=length, adjust=False).mean()
+    return 2.0 * ema1 - ema2
+
+
 def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 41 trend and moving average signals from OHLCV dataframe.
+    """Generate all 53 trend and moving average signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -528,7 +767,7 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 41 columns ending with '_signal', with values in
+        DataFrame containing 53 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -691,6 +930,71 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
 
         # 20. Trend Intensity Index (TII 14) (1)
         signals["trend_tii_14_signal"] = _calc_tii(close, length=14, sma_length=20)
+        pbar.update(1)
+
+        # 21. Ehlers 2-Pole Super Smoother Filter (1)
+        ss10 = _calc_ehlers_super_smoother(close, length=10)
+        signals["trend_ehlers_super_smoother_cross_signal"] = _crossover_signal(close, ss10)
+        pbar.update(1)
+
+        # 22. McGinley Dynamic (14) (1)
+        md14 = _calc_mcginley_dynamic(close, length=14)
+        signals["trend_mcginley_dynamic_cross_signal"] = _crossover_signal(close, md14)
+        pbar.update(1)
+
+        # 23. GMMA Ribbon Expansion (1)
+        signals["trend_gmma_ribbon_expansion_signal"] = _calc_gmma_ribbon_expansion(close)
+        pbar.update(1)
+
+        # 24. GMMA Compression Breakout (1)
+        signals["trend_gmma_compression_breakout_signal"] = _calc_gmma_compression_breakout(close)
+        pbar.update(1)
+
+        # 25. Rainbow 5-EMA Alignment (1)
+        signals["trend_rainbow_ema_alignment_signal"] = _calc_rainbow_ema_alignment(close)
+        pbar.update(1)
+
+        # 26. Ehlers Instantaneous Trendline (1)
+        itrend = _calc_ehlers_instantaneous_trend(high, low, close, alpha=0.07)
+        signals["trend_ehlers_instantaneous_trend_signal"] = _crossover_signal(close, itrend)
+        pbar.update(1)
+
+        # 27. Coral Trend Filter (1)
+        signals["trend_coral_trend_filter_signal"] = _calc_coral_trend_filter(
+            close, length=21, cd=0.4
+        )
+        pbar.update(1)
+
+        # 28. Conservative Slow SuperTrend (20, 5.0) (1)
+        signals["trend_supertrend_atr_20_5_signal"] = _calc_supertrend(
+            high, low, close, length=20, multiplier=5.0
+        )
+        pbar.update(1)
+
+        # 29. Donchian Channel 20 Middle Line (1)
+        donchian_high = high.rolling(20, min_periods=1).max()
+        donchian_low = low.rolling(20, min_periods=1).min()
+        donchian_mid = (donchian_high + donchian_low) / 2.0
+        signals["trend_donchian_middle_cross_20_signal"] = _crossover_signal(close, donchian_mid)
+        pbar.update(1)
+
+        # 30. Bill Williams Alligator Lips / Jaw Cross (1)
+        med_price = (high + low) / 2.0
+        alligator_lips = med_price.ewm(span=5, adjust=False).mean().shift(3)
+        alligator_jaw = med_price.ewm(span=13, adjust=False).mean().shift(8)
+        signals["trend_alligator_lips_jaw_cross_signal"] = _crossover_signal(
+            alligator_lips, alligator_jaw
+        )
+        pbar.update(1)
+
+        # 31. Arnaud Legoux Moving Average (ALMA 9) (1)
+        alma9 = _calc_alma(close, length=9, sigma=6.0, offset=0.85)
+        signals["trend_alma_cross_9_signal"] = _crossover_signal(close, alma9)
+        pbar.update(1)
+
+        # 32. Zero-Lag EMA (21) (1)
+        zlema21 = _calc_zero_lag_ema(close, length=21)
+        signals["trend_zero_lag_ema_cross_21_signal"] = _crossover_signal(close, zlema21)
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index
