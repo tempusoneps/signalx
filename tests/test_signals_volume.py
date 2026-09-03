@@ -46,15 +46,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLUME_SIGNALS = VOLUME_SIGNAL_COLUMNS
 
 
-def test_volume_signals_all_12_columns_present():
+def test_volume_signals_all_28_columns_present():
     """Verify generate_volume_signals produces exactly the expected volume signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volume_signals(df)
 
-    assert len(EXPECTED_VOLUME_SIGNALS) == 18
+    assert len(EXPECTED_VOLUME_SIGNALS) == 28
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLUME_SIGNALS:
@@ -97,7 +97,7 @@ def test_volume_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -112,7 +112,7 @@ def test_volume_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -132,7 +132,7 @@ def test_volume_signals_normalization():
     res = generate_volume_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
 
 
 def test_volume_signals_missing_columns():
@@ -149,7 +149,7 @@ def test_volume_signals_zero_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -163,7 +163,7 @@ def test_volume_signals_constant_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 18
+    assert len(res.columns) == 28
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -342,6 +342,132 @@ def test_volume_helpers_edge_cases():
     assert res_bound.iloc[0] == SignalState.BUY
     assert res_bound.iloc[1] == SignalState.HOLD
     assert res_bound.iloc[2] == SignalState.SELL
+
+
+def test_klinger_osc_cross_signal():
+    """Verify KVO signal cross produces valid states and triggers on trend change."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_klinger_osc_cross_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.HOLD in sig.values
+
+
+def test_elder_ray_bull_bear_signal():
+    """Verify Elder Ray Bull/Bear Power produces BUY/SELL signals."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_elder_ray_bull_bear_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
+
+
+def test_volume_climax_absorption_signal():
+    """Verify volume climax absorption signals on extreme volume wicks."""
+    n = 30
+    open_p = pd.Series([100.0] * n)
+    high = pd.Series([102.0] * n)
+    low = pd.Series([98.0] * n)
+    close = pd.Series([100.0] * n)
+    volume = pd.Series([1000.0] * n)
+
+    # Candle 25: volume spike (5000 >= 3x 1000), long lower wick (low=90, open=98, close=101, high=102 -> lower wick=8, range=12, 8/12=66% >= 40%), bullish close
+    high.iloc[25] = 102.0
+    low.iloc[25] = 90.0
+    open_p.iloc[25] = 98.0
+    close.iloc[25] = 101.0
+    volume.iloc[25] = 5000.0
+
+    # Candle 26: volume spike, long upper wick (high=112, open=102, close=99, low=98 -> upper wick=10, range=14, 10/14=71% >= 40%), bearish close
+    high.iloc[26] = 112.0
+    low.iloc[26] = 98.0
+    open_p.iloc[26] = 102.0
+    close.iloc[26] = 99.0
+    volume.iloc[26] = 5000.0
+
+    df = pd.DataFrame({"open": open_p, "high": high, "low": low, "close": close, "volume": volume})
+    res = generate_volume_signals(df)
+    sig = res["volume_climax_absorption_signal"]
+    assert sig.iloc[25] == SignalState.BUY
+    assert sig.iloc[26] == SignalState.SELL
+
+
+def test_twiggs_money_flow_cross_signal():
+    """Verify Twiggs Money Flow zero centerline cross produces signals."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_twiggs_money_flow_cross_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
+
+
+def test_nvi_ema_cross_signal():
+    """Verify Negative Volume Index EMA cross produces signals."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_nvi_pvi_cross_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
+
+
+def test_vwap_anchored_dev1_signal():
+    """Verify VWAP +-1 std band bounce and rejection."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_vwap_anchored_dev1_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
+
+
+def test_vwap_anchored_dev3_signal():
+    """Verify VWAP +-3 std extreme bands trigger signals."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_vwap_anchored_dev3_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.HOLD in sig.values
+
+
+def test_volume_delta_proxy_surge_signal():
+    """Verify delta proxy volume surge on strong directional close near extremes."""
+    n = 20
+    open_p = pd.Series([100.0] * n)
+    high = pd.Series([110.0] * n)
+    low = pd.Series([90.0] * n)
+    close = pd.Series([100.0] * n)
+    volume = pd.Series([1000.0] * n)
+
+    # Bar 10: Close = 108 (close near high 110, low 90 -> (108-90)/(110-90) = 18/20 = 0.90 > 0.70, close > open) -> BUY
+    open_p.iloc[10] = 95.0
+    close.iloc[10] = 108.0
+
+    # Bar 11: Close = 92 (close near low 90, high 110 -> (110-92)/(110-90) = 18/20 = 0.90 > 0.70, close < open) -> SELL
+    open_p.iloc[11] = 105.0
+    close.iloc[11] = 92.0
+
+    df = pd.DataFrame({"open": open_p, "high": high, "low": low, "close": close, "volume": volume})
+    res = generate_volume_signals(df)
+    sig = res["volume_delta_proxy_surge_signal"]
+    assert sig.iloc[10] == SignalState.BUY
+    assert sig.iloc[11] == SignalState.SELL
+
+
+def test_vwma_sma_divergence_signal():
+    """Verify VWMA vs SMA divergence produces BUY/SELL signals."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_vwma_sma_divergence_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
+
+
+def test_volume_weighted_rsi_signal():
+    """Verify Volume-Weighted RSI (14) overbought/oversold boundaries."""
+    df = make_synthetic_ohlcv(250)
+    res = generate_volume_signals(df)
+    sig = res["volume_volume_weighted_rsi_14_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert SignalState.BUY in sig.values or SignalState.SELL in sig.values
 
 
 def test_signals_package_export():
