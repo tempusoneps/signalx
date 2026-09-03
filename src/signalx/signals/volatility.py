@@ -41,6 +41,16 @@ VOLATILITY_SIGNAL_COLUMNS = [
     "vol_linreg_channel_reversal_20_signal",
     "vol_keltner_reversal_20_signal",
     "vol_envelope_breakout_20_signal",
+    "vol_rvi_ob_os_14_signal",
+    "vol_garman_klass_expansion_signal",
+    "vol_parkinson_volatility_surge_signal",
+    "vol_squeeze_momentum_pro_signal",
+    "vol_keltner_width_squeeze_signal",
+    "vol_atr_ratio_fast_slow_signal",
+    "vol_chandelier_exit_reversal_signal",
+    "vol_mass_index_reversal_bulge_signal",
+    "vol_normalized_atr_stretch_signal",
+    "vol_dual_thrust_range_breakout_signal",
 ]
 
 
@@ -667,8 +677,373 @@ def _calc_envelope_breakout(close: pd.Series, sma: pd.Series, pct: float = 0.025
     )
 
 
+def _calc_rvi_ob_os(close: pd.Series, length: int = 14, std_length: int = 10) -> pd.Series:
+    """Calculate Relative Volatility Index (RVI 14 period) overbought/oversold crossover."""
+    diff = close.diff()
+    std = close.rolling(window=std_length, min_periods=max(2, std_length // 2)).std()
+
+    up = std.where(diff > 0, 0.0)
+    down = std.where(diff < 0, 0.0)
+    up = up.where(~diff.isna(), np.nan)
+    down = down.where(~diff.isna(), np.nan)
+
+    smoothed_up = up.ewm(span=length, adjust=False).mean()
+    smoothed_down = down.ewm(span=length, adjust=False).mean()
+    denom = smoothed_up + smoothed_down
+    rvi = (100.0 * smoothed_up / denom.replace(0, np.nan)).fillna(50.0)
+
+    rvi_arr = rvi.to_numpy(dtype=float, na_value=np.nan)
+    rvi_prev = rvi.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    valid = ~np.isnan(rvi_arr) & ~np.isnan(rvi_prev)
+
+    cross_above_30 = valid & (rvi_prev <= 30.0) & (rvi_arr > 30.0)
+    cross_below_70 = valid & (rvi_prev >= 70.0) & (rvi_arr < 70.0)
+    hold = valid & ~cross_above_30 & ~cross_below_70
+
+    condlist = [cross_above_30, cross_below_70, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_garman_klass(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 20,
+    quantile_threshold: float = 0.90,
+) -> pd.Series:
+    """Calculate Garman-Klass Volatility Estimator expansion surge signal."""
+    hl_ratio = (high / low.replace(0, np.nan)).replace(0, np.nan)
+    co_ratio = (close / open_p.replace(0, np.nan)).replace(0, np.nan)
+
+    log_hl = np.log(hl_ratio)
+    log_co = np.log(co_ratio)
+
+    gk = 0.5 * (log_hl**2) - (2.0 * np.log(2.0) - 1.0) * (log_co**2)
+    gk_q = gk.rolling(window=window, min_periods=max(2, window // 4)).quantile(quantile_threshold)
+
+    gk_arr = gk.to_numpy(dtype=float, na_value=np.nan)
+    q_arr = gk_q.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    prev_c = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(gk_arr) & ~np.isnan(q_arr) & ~np.isnan(c_arr) & ~np.isnan(prev_c)
+    surge = valid & (gk_arr > q_arr)
+
+    bull = surge & (c_arr > prev_c)
+    bear = surge & (c_arr < prev_c)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_parkinson_surge(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 20,
+    multiplier: float = 1.8,
+) -> pd.Series:
+    """Calculate Parkinson High-Low Volatility surge signal."""
+    hl_ratio = (high / low.replace(0, np.nan)).replace(0, np.nan)
+    log_hl = np.log(hl_ratio)
+    park = (log_hl**2) / (4.0 * np.log(2.0))
+    park_sma = park.rolling(window=window, min_periods=max(2, window // 4)).mean()
+
+    p_arr = park.to_numpy(dtype=float, na_value=np.nan)
+    s_arr = park_sma.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(p_arr) & ~np.isnan(s_arr) & ~np.isnan(o_arr) & ~np.isnan(c_arr)
+    surge = valid & (p_arr >= multiplier * s_arr)
+
+    bull = surge & (c_arr > o_arr)
+    bear = surge & (c_arr < o_arr)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_squeeze_momentum_pro(
+    bb_width: pd.Series,
+    kc_width: pd.Series,
+    momentum_slope: pd.Series,
+) -> pd.Series:
+    """Calculate LazyBear Squeeze Momentum Pro breakout signal."""
+    bb_w = bb_width.to_numpy(dtype=float, na_value=np.nan)
+    kc_w = kc_width.to_numpy(dtype=float, na_value=np.nan)
+    slope = momentum_slope.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(bb_w) & ~np.isnan(kc_w) & ~np.isnan(slope)
+    squeeze_off = valid & (bb_w > kc_w)
+
+    bull = squeeze_off & (slope > 0)
+    bear = squeeze_off & (slope < 0)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=bb_width.index,
+        dtype=str,
+    )
+
+
+def _calc_keltner_width_squeeze(
+    kc_width: pd.Series,
+    close: pd.Series,
+    sma20: pd.Series,
+    window: int = 20,
+    ratio: float = 0.70,
+) -> pd.Series:
+    """Calculate Keltner Channel Bandwidth compression signal."""
+    w_sma = kc_width.rolling(window=window, min_periods=max(2, window // 4)).mean()
+
+    w_arr = kc_width.to_numpy(dtype=float, na_value=np.nan)
+    s_arr = w_sma.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    sma_arr = sma20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(w_arr) & ~np.isnan(s_arr) & ~np.isnan(c_arr) & ~np.isnan(sma_arr)
+    squeeze = valid & (w_arr < ratio * s_arr)
+
+    bull = squeeze & (c_arr >= sma_arr)
+    bear = squeeze & (c_arr < sma_arr)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_atr_ratio_fast_slow(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    fast: int = 5,
+    slow: int = 20,
+    threshold: float = 1.40,
+) -> pd.Series:
+    """Calculate ATR Fast/Slow Ratio volatility explosion signal."""
+    try:
+        atr_fast = ta.volatility.AverageTrueRange(
+            high=high, low=low, close=close, window=fast, fillna=False
+        ).average_true_range()
+        atr_slow = ta.volatility.AverageTrueRange(
+            high=high, low=low, close=close, window=slow, fillna=False
+        ).average_true_range()
+    except Exception:
+        atr_fast = (high - low).rolling(fast, min_periods=2).mean()
+        atr_slow = (high - low).rolling(slow, min_periods=5).mean()
+
+    ratio = atr_fast / atr_slow.replace(0, np.nan)
+
+    r_arr = ratio.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    prev_c = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(r_arr) & ~np.isnan(c_arr) & ~np.isnan(prev_c)
+    surge = valid & (r_arr > threshold)
+
+    bull = surge & (c_arr > prev_c)
+    bear = surge & (c_arr < prev_c)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_chandelier_exit(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    length: int = 22,
+    multiplier: float = 3.0,
+) -> pd.Series:
+    """Calculate Chandelier Exit reversal signal."""
+    try:
+        atr = ta.volatility.AverageTrueRange(
+            high=high, low=low, close=close, window=length, fillna=False
+        ).average_true_range()
+    except Exception:
+        atr = (high - low).rolling(length, min_periods=2).mean()
+
+    high_max = high.rolling(length, min_periods=max(2, length // 4)).max()
+    low_min = low.rolling(length, min_periods=max(2, length // 4)).min()
+
+    long_stop = high_max - multiplier * atr
+    short_stop = low_min + multiplier * atr
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    ls_arr = long_stop.to_numpy(dtype=float, na_value=np.nan)
+    ss_arr = short_stop.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(c_arr) & ~np.isnan(ls_arr) & ~np.isnan(ss_arr)
+
+    bull = valid & (c_arr > ss_arr)
+    bear = valid & (c_arr < ls_arr)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_mass_index_reversal(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    ema_period: int = 9,
+    sum_period: int = 25,
+    bulge_threshold: float = 27.0,
+    reversal_threshold: float = 26.5,
+) -> pd.Series:
+    """Calculate Mass Index reversal bulge signal."""
+    hl_range = high - low
+    ema1 = hl_range.ewm(span=ema_period, adjust=False).mean()
+    ema2 = ema1.ewm(span=ema_period, adjust=False).mean()
+    ratio = ema1 / ema2.replace(0, np.nan)
+    mass_index = ratio.rolling(window=sum_period, min_periods=max(2, sum_period // 4)).sum()
+
+    mi_max5 = mass_index.rolling(window=5, min_periods=1).max()
+    ema_close = close.ewm(span=ema_period, adjust=False).mean()
+
+    mi_arr = mass_index.to_numpy(dtype=float, na_value=np.nan)
+    mi_max5_arr = mi_max5.to_numpy(dtype=float, na_value=np.nan)
+    c_ema = ema_close.to_numpy(dtype=float, na_value=np.nan)
+    prev_c_ema = ema_close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(mi_arr) & ~np.isnan(mi_max5_arr) & ~np.isnan(c_ema) & ~np.isnan(prev_c_ema)
+    bulge_reversal = valid & (mi_max5_arr > bulge_threshold) & (mi_arr < reversal_threshold)
+
+    bull = bulge_reversal & (c_ema > prev_c_ema)
+    bear = bulge_reversal & (c_ema < prev_c_ema)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_natr_stretch(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window_atr: int = 14,
+    window_sma: int = 20,
+    multiplier: float = 2.0,
+) -> pd.Series:
+    """Calculate Normalized ATR extreme expansion stretch signal."""
+    try:
+        atr = ta.volatility.AverageTrueRange(
+            high=high, low=low, close=close, window=window_atr, fillna=False
+        ).average_true_range()
+    except Exception:
+        atr = (high - low).rolling(window_atr, min_periods=2).mean()
+
+    natr = (atr / close.replace(0, np.nan)) * 100.0
+    natr_sma = natr.rolling(window=window_sma, min_periods=max(2, window_sma // 4)).mean()
+
+    natr_arr = natr.to_numpy(dtype=float, na_value=np.nan)
+    s_arr = natr_sma.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(natr_arr) & ~np.isnan(s_arr) & ~np.isnan(o_arr) & ~np.isnan(c_arr)
+    surge = valid & (natr_arr >= multiplier * s_arr)
+
+    bull = surge & (c_arr > o_arr)
+    bear = surge & (c_arr < o_arr)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_dual_thrust(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    length: int = 5,
+    k: float = 0.5,
+) -> pd.Series:
+    """Calculate Dual Thrust 5-period range breakout signal."""
+    hh = high.rolling(length, min_periods=max(2, length // 2)).max().shift(1)
+    lc = close.rolling(length, min_periods=max(2, length // 2)).min().shift(1)
+    hc = close.rolling(length, min_periods=max(2, length // 2)).max().shift(1)
+    ll = low.rolling(length, min_periods=max(2, length // 2)).min().shift(1)
+
+    range_1 = hh - lc
+    range_2 = hc - ll
+    rng = np.maximum(range_1, range_2)
+
+    buy_line = open_p + k * rng
+    sell_line = open_p - k * rng
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    bl_arr = buy_line.to_numpy(dtype=float, na_value=np.nan)
+    sl_arr = sell_line.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(c_arr) & ~np.isnan(bl_arr) & ~np.isnan(sl_arr)
+    bull = valid & (c_arr > bl_arr)
+    bear = valid & (c_arr < sl_arr)
+    hold = valid & ~bull & ~bear
+
+    condlist = [bull, bear, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 32 volatility, channel, and band signals from OHLCV dataframe.
+    """Generate all 42 volatility, channel, and band signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -680,7 +1055,7 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 32 columns ending with '_signal', with values in
+        DataFrame containing 42 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -920,6 +1295,84 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
         # 24. Moving Average Envelope Breakout (1)
         signals["vol_envelope_breakout_20_signal"] = _calc_envelope_breakout(
             close, bb20_m, pct=0.025
+        )
+        pbar.update(1)
+
+        # 25. Relative Volatility Index (RVI 14) (1)
+        signals["vol_rvi_ob_os_14_signal"] = _calc_rvi_ob_os(close, length=14, std_length=10)
+        pbar.update(1)
+
+        # 26. Garman-Klass Volatility Estimator (1)
+        signals["vol_garman_klass_expansion_signal"] = _calc_garman_klass(
+            open_p, high, low, close, window=20, quantile_threshold=0.90
+        )
+        pbar.update(1)
+
+        # 27. Parkinson Volatility Surge (1)
+        signals["vol_parkinson_volatility_surge_signal"] = _calc_parkinson_surge(
+            open_p, high, low, close, window=20, multiplier=1.8
+        )
+        pbar.update(1)
+
+        # 28. LazyBear Squeeze Momentum Pro (1)
+        hh20 = high.rolling(20, min_periods=5).max()
+        ll20 = low.rolling(20, min_periods=5).min()
+        mid20 = (hh20 + ll20) / 2.0
+        val = close - ((mid20 + bb20_m) / 2.0)
+        length_sq = 20
+        x_sq = np.arange(length_sq, dtype=float)
+        x_diff_sq = x_sq - (length_sq - 1) / 2.0
+        s_xx_sq = np.sum(x_diff_sq**2)
+        weights_sq = x_diff_sq / s_xx_sq
+        val_arr = val.to_numpy(dtype=float, na_value=np.nan)
+        slopes_sq = np.full(len(close), np.nan, dtype=float)
+        for i in range(length_sq - 1, len(close)):
+            w_block = val_arr[i - length_sq + 1 : i + 1]
+            if not np.isnan(w_block).any():
+                slopes_sq[i] = np.dot(w_block, weights_sq)
+        mom_slope_ser = pd.Series(slopes_sq, index=close.index)
+
+        signals["vol_squeeze_momentum_pro_signal"] = _calc_squeeze_momentum_pro(
+            bb20_h - bb20_l,
+            kc15.keltner_channel_hband() - kc15.keltner_channel_lband(),
+            mom_slope_ser,
+        )
+        pbar.update(1)
+
+        # 29. Keltner Channel Bandwidth Compression (1)
+        kc20_w = kc20.keltner_channel_hband() - kc20.keltner_channel_lband()
+        signals["vol_keltner_width_squeeze_signal"] = _calc_keltner_width_squeeze(
+            kc20_w, close, bb20_m, window=20, ratio=0.70
+        )
+        pbar.update(1)
+
+        # 30. ATR Fast/Slow Ratio (1)
+        signals["vol_atr_ratio_fast_slow_signal"] = _calc_atr_ratio_fast_slow(
+            high, low, close, fast=5, slow=20, threshold=1.40
+        )
+        pbar.update(1)
+
+        # 31. Chandelier Exit Reversal (1)
+        signals["vol_chandelier_exit_reversal_signal"] = _calc_chandelier_exit(
+            high, low, close, length=22, multiplier=3.0
+        )
+        pbar.update(1)
+
+        # 32. Mass Index Reversal Bulge (1)
+        signals["vol_mass_index_reversal_bulge_signal"] = _calc_mass_index_reversal(
+            high, low, close
+        )
+        pbar.update(1)
+
+        # 33. Normalized ATR Stretch (1)
+        signals["vol_normalized_atr_stretch_signal"] = _calc_natr_stretch(
+            open_p, high, low, close, window_atr=14, window_sma=20, multiplier=2.0
+        )
+        pbar.update(1)
+
+        # 34. Dual Thrust Range Breakout (1)
+        signals["vol_dual_thrust_range_breakout_signal"] = _calc_dual_thrust(
+            open_p, high, low, close, length=5, k=0.5
         )
         pbar.update(1)
 
