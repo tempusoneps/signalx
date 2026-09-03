@@ -10,7 +10,17 @@ from signalx.signals.momentum import (
     _bound_signal,
     _calc_ao_saucer,
     _calc_cmo,
+    _calc_cmo_divergence,
+    _calc_coppock,
+    _calc_demarker,
+    _calc_dmi,
     _calc_fisher,
+    _calc_kst,
+    _calc_rmi,
+    _calc_schaff_tc,
+    _calc_smi,
+    _calc_smi_cross,
+    _calc_threshold_reversal,
     _crossover_signal,
     generate_momentum_signals,
 )
@@ -40,15 +50,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_MOMENTUM_SIGNALS = MOMENTUM_SIGNAL_COLUMNS
 
 
-def test_momentum_signals_all_23_columns_present():
-    """Verify generate_momentum_signals produces exactly the expected momentum signals."""
+def test_momentum_signals_all_38_columns_present():
+    """Verify generate_momentum_signals produces exactly the 38 expected momentum signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_momentum_signals(df)
 
-    assert len(EXPECTED_MOMENTUM_SIGNALS) == 30
+    assert len(EXPECTED_MOMENTUM_SIGNALS) == 38
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 30
+    assert len(res.columns) == 38
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_MOMENTUM_SIGNALS:
@@ -91,7 +101,7 @@ def test_momentum_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 30
+    assert len(res.columns) == 38
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -106,7 +116,7 @@ def test_momentum_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 30
+    assert len(res.columns) == 38
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -126,7 +136,7 @@ def test_momentum_signals_normalization():
     res = generate_momentum_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 30
+    assert len(res.columns) == 38
 
 
 def test_momentum_signals_missing_columns():
@@ -240,3 +250,128 @@ def test_ao_saucer_patterns():
     ao_bear = pd.Series([-1.0, -2.0, -1.5, -1.8, -1.9])
     res_bear = _calc_ao_saucer(ao_bear)
     assert res_bear.iloc[3] == SignalState.SELL
+
+
+def test_threshold_reversal_direct():
+    """Verify _calc_threshold_reversal helper on boundary bounce conditions."""
+    vals = pd.Series([25.0, 35.0, 50.0, 75.0, 65.0, np.nan])
+    res = _calc_threshold_reversal(vals, lower=30.0, upper=70.0)
+    assert res.iloc[1] == SignalState.BUY
+    assert res.iloc[2] == SignalState.HOLD
+    assert res.iloc[4] == SignalState.SELL
+    assert res.iloc[5] == SignalState.NONE
+
+
+def test_rmi_ob_os_direct():
+    """Verify Relative Momentum Index (RMI) calculation and threshold reversal."""
+    df = make_synthetic_ohlcv(100)
+    rmi = _calc_rmi(df["close"], length=14, mom=5)
+    assert isinstance(rmi, pd.Series)
+    valid_rmi = rmi.dropna()
+    assert (valid_rmi >= 0.0).all() and (valid_rmi <= 100.0).all()
+
+    # Synthetic RMI bounce
+    synthetic_rmi = pd.Series([20.0, 32.0, 55.0, 75.0, 68.0])
+    sig = _calc_threshold_reversal(synthetic_rmi, lower=30.0, upper=70.0)
+    assert sig.iloc[1] == SignalState.BUY
+    assert sig.iloc[4] == SignalState.SELL
+
+
+def test_dmi_variable_lookback_direct():
+    """Verify Dynamic Momentum Index (DMI) variable lookback calculation."""
+    df = make_synthetic_ohlcv(150)
+    dmi = _calc_dmi(df["close"], base_length=14, min_len=5, max_len=30)
+    assert isinstance(dmi, pd.Series)
+    valid_dmi = dmi.dropna()
+    assert len(valid_dmi) > 50
+    assert (valid_dmi >= 0.0).all() and (valid_dmi <= 100.0).all()
+
+    # Check edge case short series
+    short_dmi = _calc_dmi(df["close"].iloc[:10])
+    assert short_dmi.isna().all()
+
+
+def test_coppock_curve_direct():
+    """Verify Coppock Curve calculation and zero centerline crossover."""
+    df = make_synthetic_ohlcv(100)
+    cop = _calc_coppock(df["close"])
+    assert isinstance(cop, pd.Series)
+
+    cop_syn = pd.Series([-5.0, 2.0, 3.0, -1.0])
+    sig = _crossover_signal(cop_syn, pd.Series(0.0, index=cop_syn.index))
+    assert sig.iloc[1] == SignalState.BUY
+    assert sig.iloc[3] == SignalState.SELL
+
+
+def test_stoch_momentum_index_cross_direct():
+    """Verify Stochastic Momentum Index (SMI) and extreme crossover signal."""
+    df = make_synthetic_ohlcv(100)
+    smi, smi_sig = _calc_smi(df["high"], df["low"], df["close"], fast=13, slow=25, signal=2)
+    assert isinstance(smi, pd.Series)
+    assert isinstance(smi_sig, pd.Series)
+
+    # Bullish cross in oversold (< -40): prev smi <= sig, smi > sig and smi < -40
+    s_smi = pd.Series([-50.0, -45.0, 50.0, 45.0])
+    s_sig = pd.Series([-48.0, -48.0, 42.0, 48.0])
+    res = _calc_smi_cross(s_smi, s_sig, lower=-40.0, upper=40.0)
+    assert res.iloc[1] == SignalState.BUY
+    assert res.iloc[3] == SignalState.SELL
+
+
+def test_schaff_trend_cycle_cross_direct():
+    """Verify Schaff Trend Cycle (STC) and 25/75 threshold crossings."""
+    df = make_synthetic_ohlcv(150)
+    stc = _calc_schaff_tc(df["close"], fast=23, slow=50, tc_length=10)
+    assert isinstance(stc, pd.Series)
+    valid_stc = stc.dropna()
+    assert len(valid_stc) > 50
+
+    stc_syn = pd.Series([15.0, 28.0, 50.0, 80.0, 72.0])
+    sig = _calc_threshold_reversal(stc_syn, lower=25.0, upper=75.0)
+    assert sig.iloc[1] == SignalState.BUY
+    assert sig.iloc[4] == SignalState.SELL
+
+
+def test_cmo_divergence_direct():
+    """Verify Chande Momentum Oscillator (CMO) 5-bar regular divergence."""
+    # Bullish divergence: Low < Low[5], but CMO > CMO[5]
+    lows = pd.Series([100.0, 100.0, 100.0, 100.0, 100.0, 95.0])
+    highs = pd.Series([110.0, 110.0, 110.0, 110.0, 110.0, 105.0])
+    cmos = pd.Series([-40.0, -30.0, -20.0, -10.0, 0.0, -20.0])  # CMO[5]=-20 > CMO[0]=-40
+    sig_bull = _calc_cmo_divergence(highs, lows, cmos, lookback=5)
+    assert sig_bull.iloc[5] == SignalState.BUY
+
+    # Bearish divergence: High > High[5], but CMO < CMO[5]
+    lows_bear = pd.Series([100.0, 100.0, 100.0, 100.0, 100.0, 105.0])
+    highs_bear = pd.Series([110.0, 110.0, 110.0, 110.0, 110.0, 120.0])
+    cmos_bear = pd.Series([40.0, 30.0, 20.0, 10.0, 0.0, 20.0])  # CMO[5]=20 < CMO[0]=40
+    sig_bear = _calc_cmo_divergence(highs_bear, lows_bear, cmos_bear, lookback=5)
+    assert sig_bear.iloc[5] == SignalState.SELL
+
+
+def test_kst_oscillator_cross_direct():
+    """Verify Know Sure Thing (KST) line and signal line crossover."""
+    df = make_synthetic_ohlcv(100)
+    kst, kst_sig = _calc_kst(df["close"])
+    assert isinstance(kst, pd.Series)
+    assert isinstance(kst_sig, pd.Series)
+
+    kst_syn = pd.Series([10.0, 15.0, 12.0])
+    sig_syn = pd.Series([12.0, 12.0, 14.0])
+    sig = _crossover_signal(kst_syn, sig_syn)
+    assert sig.iloc[1] == SignalState.BUY
+    assert sig.iloc[2] == SignalState.SELL
+
+
+def test_demarker_indicator_cross_direct():
+    """Verify Tom DeMarker Indicator (DeM 14) and 0.30/0.70 threshold crossing."""
+    df = make_synthetic_ohlcv(100)
+    dem = _calc_demarker(df["high"], df["low"], length=14)
+    assert isinstance(dem, pd.Series)
+    valid_dem = dem.dropna()
+    assert (valid_dem >= 0.0).all() and (valid_dem <= 1.0).all()
+
+    dem_syn = pd.Series([0.25, 0.35, 0.50, 0.75, 0.65])
+    sig = _calc_threshold_reversal(dem_syn, lower=0.30, upper=0.70)
+    assert sig.iloc[1] == SignalState.BUY
+    assert sig.iloc[4] == SignalState.SELL
