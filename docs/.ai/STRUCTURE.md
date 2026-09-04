@@ -15,7 +15,7 @@ signalx/
 │   │   ├── AI_AGENT_GUIDELINE.md # Coding standards, commands, test performance rules
 │   │   ├── CONFIGURATION.md      # CLI options, dataframe schemas, parameters
 │   │   ├── RULE.md               # Core repository invariants and constraints
-│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 172 signals across 7 categories
+│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 230 signals across 7 categories
 │   │   ├── STRUCTURE.md          # Repository layout and module responsibilities
 │   │   └── USAGE.md              # Python API & CLI usage examples
 │   ├── superpowers/              # Spec and implementation plan documentation
@@ -35,13 +35,13 @@ signalx/
 │       ├── utils.py              # OHLCV validation, column normalization, I/O, stats
 │       └── signals/              # Category signal generator modules
 │           ├── __init__.py       # Dispatches all category generators
-│           ├── candlestick.py    # Candlestick geometry and price action patterns (27 signals)
-│           ├── composite.py      # Consensus and ensemble voting signals (8 signals)
-│           ├── momentum.py       # Oscillators and momentum indicators (30 signals)
-│           ├── statistical.py    # Z-scores, linear regression, efficiency (16 signals)
-│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (41 signals)
-│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (32 signals)
-│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (18 signals)
+│           ├── candlestick.py    # Candlestick geometry and price action patterns (37 signals)
+│           ├── composite.py      # Consensus and ensemble voting signals (12 signals)
+│           ├── momentum.py       # Oscillators and momentum indicators (38 signals)
+│           ├── statistical.py    # Z-scores, linear regression, efficiency (20 signals)
+│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (53 signals)
+│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (42 signals)
+│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (28 signals)
 ├── tests/                        # Comprehensive unit and integration test suite
 │   ├── test_cli.py               # Tests for CLI subcommands and flag parsing
 │   ├── test_constants.py         # Tests for SignalState and ALL_SIGNAL_STATES
@@ -69,7 +69,7 @@ signalx/
 ### Core Library (`src/signalx/`)
 - `constants.py`: Holds `SignalState` class with strings `"buy"`, `"sell"`, `"hold"`, `"none"` and `ALL_SIGNAL_STATES` frozenset.
 - `utils.py`: Provides input data sanitation (`normalize_ohlcv`), case-insensitive column aliasing, DataFrame I/O (`load_dataframe`, `save_dataframe`), and frequency metrics (`compute_signal_stats`).
-- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 172 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
+- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 230 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
 - `core.py`: Exposes `generate_signals(df, drop_ohlcv=False, show_progress=False, naming="code")` which coordinates normalization, dispatches category signal extractors, applies requested naming convention (`"code"` or `"semantic"`), and aggregates results.
 - `cli.py`: Implements the `signalx` command-line executable using `argparse` (subcommands: `generate`, `inspect`, `stats`, `list`).
 
