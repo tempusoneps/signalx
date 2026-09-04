@@ -275,14 +275,16 @@ SignalX enforces the following structured commit message format:
 
 ### Components
 1. **`<branch>`**: The current working branch name (e.g. `develop`, `feature/signals-expansion`, `main`).
-2. **`<next_tag|next_version>`**: The upcoming semantic version tag or target milestone release (e.g. `v0.2.0`, `v1.0.0`, `v0.1.5`).
+2. **`<next_tag|next_version>`**: The upcoming target semantic release version tag, calculated as follows:
+   - **Rule**: `next_tag|next_version` = **Tag hiện tại + `0.1.0`** (minor version bump, e.g. `v0.1.0` $\rightarrow$ `v0.2.0`, `v0.2.0` $\rightarrow$ `v0.3.0`).
+   - **Default / Initial State**: Nếu repository chưa có tag hoặc version nào trước đó, giá trị mặc định luôn là **`v0.1.0`**.
 3. **`<short summary in lowercase>`**: Concise imperative description of the change starting with a lowercase letter (no trailing period).
 
 ### Examples
-- `develop(v0.2.0): add 10 smc and candlestick signals (cdl028-cdl037)`
+- `develop(v0.1.0): initial release with core pipeline and base signals` *(khi chưa có tag nào)*
+- `develop(v0.2.0): add 10 smc and candlestick signals (cdl028-cdl037)` *(khi tag hiện tại là v0.1.0)*
 - `develop(v0.2.0): add 12 dsp and trend signals (trd042-trd053)`
-- `develop(v0.2.0): fix natr stretch division by zero error`
-- `feature/smc-signals(v0.3.0): implement fvg mitigation and order block retest`
+- `feature/smc-signals(v0.3.0): implement fvg mitigation and order block retest` *(khi tag hiện tại là v0.2.0)*
 - `main(v1.0.0): release signalx 230 quantitative signals suite`
 
 ### Rules & Formatting
