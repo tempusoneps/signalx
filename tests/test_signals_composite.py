@@ -11,10 +11,14 @@ from signalx.signals.composite import (
     _calc_breakout_volume_confirmed,
     _calc_ma_consensus,
     _calc_master_ensemble,
+    _calc_master_ensemble_v2,
     _calc_mean_reversion_confluence,
     _calc_momentum_consensus,
+    _calc_smc_trend_volume_confluence,
+    _calc_squeeze_momentum_volume_surge,
     _calc_trend_consensus,
     _calc_trend_momentum_align,
+    _calc_triple_screen_trading_system,
     generate_composite_signals,
 )
 from signalx.signals.momentum import generate_momentum_signals
@@ -70,16 +74,16 @@ def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
 
 
-def test_composite_signals_all_7_columns_present():
-    """Verify generate_composite_signals produces exactly the expected composite signals."""
+def test_composite_signals_all_12_columns_present():
+    """Verify generate_composite_signals produces exactly 12 expected composite signals."""
     df = make_synthetic_ohlcv(250)
     intermediate = generate_all_intermediate(df)
     res = generate_composite_signals(df, intermediate)
 
-    assert len(EXPECTED_COMPOSITE_SIGNALS) == 8
+    assert len(EXPECTED_COMPOSITE_SIGNALS) == 12
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 8
+    assert len(res.columns) == 12
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_COMPOSITE_SIGNALS:
@@ -122,7 +126,7 @@ def test_composite_signals_without_intermediate():
     df = make_synthetic_ohlcv(100)
     res = generate_composite_signals(df, None)
 
-    assert len(res.columns) == 8
+    assert len(res.columns) == 12
     assert len(res) == 100
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns
@@ -137,7 +141,7 @@ def test_composite_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 8
+    assert len(res.columns) == 12
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -153,7 +157,7 @@ def test_composite_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 8
+    assert len(res.columns) == 12
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -167,7 +171,7 @@ def test_composite_signals_normalization():
     res = generate_composite_signals(df_upper, None)
 
     assert len(res) == 50
-    assert len(res.columns) == 8
+    assert len(res.columns) == 12
 
 
 def test_composite_signals_missing_columns():
@@ -384,16 +388,112 @@ def test_mean_reversion_confluence_direct():
     assert sig.iloc[3] == SignalState.NONE
 
 
+def test_smc_trend_volume_confluence_direct():
+    """Verify SMC + Trend + Volume confluence logic."""
+    n = 60
+    close = pd.Series([100.0 + i for i in range(n)])
+    open_p = close - 0.5
+    high = close + 1.0
+    low = close - 1.0
+    volume = pd.Series([1000.0] * n)
+    volume.iloc[-1] = 5000.0  # Volume spike at last bar
+
+    df_sample = pd.DataFrame(
+        {"open": open_p, "high": high, "low": low, "close": close, "volume": volume}
+    )
+    intermediate = pd.DataFrame(
+        {
+            "cdl_fvg_bullish_mitigation_signal": [SignalState.HOLD] * (n - 1) + [SignalState.BUY],
+            "cdl_order_block_retest_signal": [SignalState.NONE] * n,
+        }
+    )
+
+    sig = _calc_smc_trend_volume_confluence(df_sample, intermediate)
+    assert sig.iloc[-1] == SignalState.BUY
+    assert sig.iloc[0] == SignalState.NONE or sig.iloc[0] == SignalState.HOLD
+
+
+def test_triple_screen_trading_system_direct():
+    """Verify Elder Triple Screen system logic."""
+    n = 70
+    # Create trending up series then pullback then breakout
+    close = [100.0 + i * 0.5 for i in range(n)]
+    high = [c + 1.0 for c in close]
+    low = [c - 1.0 for c in close]
+    open_p = [c - 0.2 for c in close]
+    volume = [1000.0] * n
+
+    df_sample = pd.DataFrame(
+        {"open": open_p, "high": high, "low": low, "close": close, "volume": volume}
+    )
+    sig = _calc_triple_screen_trading_system(df_sample)
+    assert isinstance(sig, pd.Series)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_squeeze_momentum_volume_surge_direct():
+    """Verify Squeeze Momentum breakout with volume surge logic."""
+    n = 40
+    df_sample = pd.DataFrame(
+        {
+            "open": [100.0] * n,
+            "high": [105.0] * n,
+            "low": [95.0] * n,
+            "close": [102.0] * n,
+            "volume": [1000.0] * (n - 1) + [5000.0],
+        }
+    )
+    intermediate = pd.DataFrame(
+        {
+            "vol_squeeze_momentum_pro_signal": [SignalState.HOLD] * (n - 1) + [SignalState.BUY],
+        }
+    )
+    sig = _calc_squeeze_momentum_volume_surge(df_sample, intermediate)
+    assert sig.iloc[-1] == SignalState.BUY
+
+
+def test_master_ensemble_v2_direct():
+    """Verify Master Ensemble v2 consensus logic with >=30% threshold."""
+    idx = range(4)
+    data = {}
+    for i in range(10):
+        data[f"sig_{i}_signal"] = [SignalState.HOLD] * 4
+
+    df_signals = pd.DataFrame(data, index=idx)
+    # Row 0: 3 BUY out of 10 (30% >= 30%), 0 SELL -> BUY
+    for i in range(3):
+        df_signals.iloc[0, i] = SignalState.BUY
+    # Row 1: 3 SELL out of 10 (30% >= 30%), 0 BUY -> SELL
+    for i in range(3):
+        df_signals.iloc[1, i] = SignalState.SELL
+    # Row 2: 1 BUY, 1 SELL (10% < 30%) -> HOLD
+    df_signals.iloc[2, 0] = SignalState.BUY
+    df_signals.iloc[2, 1] = SignalState.SELL
+    # Row 3: all NONE -> NONE
+    for i in range(10):
+        df_signals.iloc[3, i] = SignalState.NONE
+
+    sig = _calc_master_ensemble_v2(df_signals)
+    assert sig.iloc[0] == SignalState.BUY
+    assert sig.iloc[1] == SignalState.SELL
+    assert sig.iloc[2] == SignalState.HOLD
+    assert sig.iloc[3] == SignalState.NONE
+
+
 def test_composite_helpers_edge_cases():
     """Verify helper functions handle empty dataframes cleanly."""
     empty_df = pd.DataFrame()
     assert len(_calc_trend_consensus(empty_df)) == 0
     assert len(_calc_momentum_consensus(empty_df)) == 0
     assert len(_calc_master_ensemble(empty_df)) == 0
+    assert len(_calc_master_ensemble_v2(empty_df)) == 0
     assert len(_calc_ma_consensus(empty_df)) == 0
     assert len(_calc_trend_momentum_align(pd.Series(dtype=str), pd.Series(dtype=str))) == 0
     assert len(_calc_breakout_volume_confirmed(empty_df)) == 0
     assert len(_calc_mean_reversion_confluence(empty_df)) == 0
+    assert len(_calc_smc_trend_volume_confluence(empty_df, empty_df)) == 0
+    assert len(_calc_triple_screen_trading_system(empty_df)) == 0
+    assert len(_calc_squeeze_momentum_volume_surge(empty_df, empty_df)) == 0
 
 
 def test_signals_package_export():
