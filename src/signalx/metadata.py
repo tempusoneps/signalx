@@ -1803,6 +1803,34 @@ def _initialize_default_catalog() -> None:
             "MACD Histogram trough reversal in negative zone with bullish engulfing close",
             "MACD Histogram peak reversal in positive zone with bearish engulfing close",
         ),
+        (
+            "comp_smc_trend_volume_confluence_signal",
+            "Smart Money Alignment Confluence (FVG/OB + SMA20>SMA50 + Volume > SMA20(Volume))",
+            "signalx_native",
+            "Bullish SMC structure (FVG mitigation / OB retest) with SMA20 > SMA50 and Volume > SMA20(Volume)",
+            "Bearish SMC structure (FVG mitigation / OB retest) with SMA20 < SMA50 and Volume > SMA20(Volume)",
+        ),
+        (
+            "comp_triple_screen_trading_system_signal",
+            "Alexander Elder Triple Screen Trading System",
+            "signalx_native",
+            "EMA50 rising (Screen 1) + RSI/Stoch oversold pullback (Screen 2) + Close > prev High (Screen 3)",
+            "EMA50 falling (Screen 1) + RSI/Stoch overbought pullback (Screen 2) + Close < prev Low (Screen 3)",
+        ),
+        (
+            "comp_squeeze_momentum_volume_surge_signal",
+            "Squeeze Momentum Breakout with Volume Surge",
+            "signalx_native",
+            "Bullish Squeeze Pro breakout release with Volume >= 1.5x SMA20(Volume)",
+            "Bearish Squeeze Pro breakdown release with Volume >= 1.5x SMA20(Volume)",
+        ),
+        (
+            "comp_master_ensemble_v2_signal",
+            "Master Ensemble v2: Advanced weighted consensus across all library signals (>=30% threshold)",
+            "signalx_native",
+            ">=30% of all active signals vote BUY and buy votes exceed sell votes",
+            ">=30% of all active signals vote SELL and sell votes exceed buy votes",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(comp_definitions, start=1):
         register_signal(
