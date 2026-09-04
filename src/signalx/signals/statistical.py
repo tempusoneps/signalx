@@ -27,6 +27,10 @@ STATISTICAL_SIGNAL_COLUMNS = [
     "stat_range_mid_reversion_10_signal",
     "stat_price_acceleration_signal",
     "stat_mean_distance_5pct_signal",
+    "stat_fractal_dimension_index_signal",
+    "stat_rolling_half_life_reversion_signal",
+    "stat_variance_ratio_test_signal",
+    "stat_rolling_skewness_reversal_signal",
 ]
 
 
@@ -427,8 +431,205 @@ def _calc_mean_distance(close: pd.Series, window: int = 20, pct: float = 0.05) -
     )
 
 
+def _calc_fractal_dimension_index(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    length: int = 30,
+    threshold: float = 1.45,
+) -> pd.Series:
+    """Calculate 30-period Fractal Dimension Index (FDI < 1.45 trending regime with SMA20)."""
+    n = len(close)
+    if n < length or length <= 1:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+
+    # Rolling max of high and rolling min of low
+    h_max = high.rolling(length).max().to_numpy(dtype=float, na_value=np.nan)
+    l_min = low.rolling(length).min().to_numpy(dtype=float, na_value=np.nan)
+    diff = (h_max - l_min) / float(length)
+
+    sma20 = (
+        close.rolling(20, min_periods=min(10, length)).mean().to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    fdi = np.full(n, np.nan, dtype=float)
+    log_n = np.log(float(length))
+
+    for i in range(length - 1, n):
+        d_val = diff[i]
+        if np.isnan(d_val) or d_val <= 1e-12:
+            fdi[i] = 1.5
+            continue
+        w_h = h_arr[i - length + 1 : i + 1]
+        w_l = l_arr[i - length + 1 : i + 1]
+        if np.isnan(w_h).any() or np.isnan(w_l).any():
+            continue
+        lengths = np.sqrt(((w_h - w_l) / d_val) ** 2 + 1.0)
+        sum_l = np.sum(lengths)
+        if sum_l > 0:
+            fdi[i] = 1.0 + (np.log(sum_l) - log_n) / log_n
+
+    valid = ~np.isnan(fdi) & ~np.isnan(c_arr) & ~np.isnan(sma20)
+    trending = valid & (fdi < threshold)
+
+    conds = [
+        trending & (c_arr > sma20),
+        trending & (c_arr < sma20),
+        valid,
+    ]
+    choices = [
+        SignalState.BUY,
+        SignalState.SELL,
+        SignalState.HOLD,
+    ]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_rolling_half_life_reversion(
+    close: pd.Series,
+    window: int = 30,
+    hl_min: float = 3.0,
+    hl_max: float = 15.0,
+    z_thresh: float = 1.8,
+) -> pd.Series:
+    """Calculate Ornstein-Uhlenbeck 30-period Half-Life mean reversion regime and Z-score triggers."""
+    n = len(close)
+    if n < window or window <= 1:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    delta_p = close.diff(1)
+    p_lag = close.shift(1)
+
+    cov = delta_p.rolling(window).cov(p_lag)
+    var = p_lag.rolling(window).var()
+
+    cov_arr = cov.to_numpy(dtype=float, na_value=np.nan)
+    var_arr = var.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_stat = ~np.isnan(cov_arr) & ~np.isnan(var_arr) & (var_arr > 1e-12)
+    lambda_param = np.full(n, np.nan, dtype=float)
+    lambda_param[valid_stat] = cov_arr[valid_stat] / var_arr[valid_stat]
+
+    half_life = np.full(n, np.nan, dtype=float)
+    neg_lambda = valid_stat & (lambda_param < -1e-12)
+    half_life[neg_lambda] = -np.log(2.0) / lambda_param[neg_lambda]
+
+    mean20 = close.rolling(20, min_periods=10).mean()
+    std20 = close.rolling(20, min_periods=10).std()
+    m20_arr = mean20.to_numpy(dtype=float, na_value=np.nan)
+    s20_arr = std20.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_z = ~np.isnan(c_arr) & ~np.isnan(m20_arr) & ~np.isnan(s20_arr) & (s20_arr > 1e-12)
+    zscore = np.full(n, np.nan, dtype=float)
+    zscore[valid_z] = (c_arr[valid_z] - m20_arr[valid_z]) / s20_arr[valid_z]
+
+    valid = ~np.isnan(half_life) & ~np.isnan(zscore)
+    mr_regime = valid & (half_life >= hl_min) & (half_life <= hl_max)
+
+    conds = [
+        mr_regime & (zscore < -z_thresh),
+        mr_regime & (zscore > z_thresh),
+        valid,
+    ]
+    choices = [
+        SignalState.BUY,
+        SignalState.SELL,
+        SignalState.HOLD,
+    ]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_variance_ratio_test(
+    close: pd.Series,
+    q: int = 5,
+    window: int = 30,
+    threshold: float = 1.25,
+) -> pd.Series:
+    """Calculate Lo-MacKinlay Variance Ratio Test (q=5, 30-period) with ROC5 directional filter."""
+    n = len(close)
+    if n < window + q or window <= 1 or q <= 0:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    c_prev1 = close.shift(1)
+    c_prev_q = close.shift(q)
+
+    # Avoid divide by zero / negative logs
+    r1 = np.log((close / c_prev1.replace(0, np.nan)).clip(lower=1e-12))
+    rq = np.log((close / c_prev_q.replace(0, np.nan)).clip(lower=1e-12))
+
+    var1 = r1.rolling(window).var()
+    var_q = rq.rolling(window).var()
+
+    v1_arr = var1.to_numpy(dtype=float, na_value=np.nan)
+    vq_arr = var_q.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_vr = ~np.isnan(v1_arr) & ~np.isnan(vq_arr) & (v1_arr > 1e-12)
+    vr = np.full(n, np.nan, dtype=float)
+    vr[valid_vr] = vq_arr[valid_vr] / (float(q) * v1_arr[valid_vr])
+
+    roc_q = (close - c_prev_q) / c_prev_q.replace(0, np.nan)
+    roc_arr = roc_q.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(vr) & ~np.isnan(roc_arr)
+    trending = valid & (vr > threshold)
+
+    conds = [
+        trending & (roc_arr > 0),
+        trending & (roc_arr < 0),
+        valid,
+    ]
+    choices = [
+        SignalState.BUY,
+        SignalState.SELL,
+        SignalState.HOLD,
+    ]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
+def _calc_rolling_skewness_reversal(
+    close: pd.Series,
+    window: int = 20,
+    skew_thresh: float = 1.50,
+) -> pd.Series:
+    """Calculate 20-period Rolling Return Skewness Reversal signal."""
+    n = len(close)
+    if n < window or window <= 2:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    returns = close.pct_change()
+    skew = returns.rolling(window).skew()
+
+    c_diff = close.diff(1)
+
+    s_arr = skew.to_numpy(dtype=float, na_value=np.nan)
+    cd_arr = c_diff.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(s_arr) & ~np.isnan(cd_arr)
+
+    conds = [
+        valid & (s_arr < -skew_thresh) & (cd_arr > 0),
+        valid & (s_arr > skew_thresh) & (cd_arr < 0),
+        valid,
+    ]
+    choices = [
+        SignalState.BUY,
+        SignalState.SELL,
+        SignalState.HOLD,
+    ]
+    res = np.select(conds, choices, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
 def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 16 standardized statistical & mean reversion signals from normalized OHLCV data.
+    """Generate all 20 standardized statistical & mean reversion signals from normalized OHLCV data.
 
     Parameters
     ----------
@@ -440,7 +641,7 @@ def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 16 columns ending with '_signal', with values in
+        DataFrame containing 20 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -516,6 +717,30 @@ def generate_statistical_signals(df: pd.DataFrame, show_progress: bool = False) 
 
         # 12. Mean Distance 5% (1)
         signals["stat_mean_distance_5pct_signal"] = _calc_mean_distance(close, window=20, pct=0.05)
+        pbar.update(1)
+
+        # 13. Fractal Dimension Index (30) (1)
+        signals["stat_fractal_dimension_index_signal"] = _calc_fractal_dimension_index(
+            high=high, low=low, close=close, length=30, threshold=1.45
+        )
+        pbar.update(1)
+
+        # 14. Rolling Half-Life Mean Reversion (30) (1)
+        signals["stat_rolling_half_life_reversion_signal"] = _calc_rolling_half_life_reversion(
+            close=close, window=30, hl_min=3.0, hl_max=15.0, z_thresh=1.8
+        )
+        pbar.update(1)
+
+        # 15. Variance Ratio Test (30) (1)
+        signals["stat_variance_ratio_test_signal"] = _calc_variance_ratio_test(
+            close=close, q=5, window=30, threshold=1.25
+        )
+        pbar.update(1)
+
+        # 16. Rolling Skewness Reversal (20) (1)
+        signals["stat_rolling_skewness_reversal_signal"] = _calc_rolling_skewness_reversal(
+            close=close, window=20, skew_thresh=1.50
+        )
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index

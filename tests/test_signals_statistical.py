@@ -8,10 +8,14 @@ from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.statistical import (
     STATISTICAL_SIGNAL_COLUMNS,
     _calc_chop_regime,
+    _calc_fractal_dimension_index,
     _calc_ker,
     _calc_linreg_price_cross,
     _calc_linreg_slope,
+    _calc_rolling_half_life_reversion,
     _calc_rolling_quantile_extremes,
+    _calc_rolling_skewness_reversal,
+    _calc_variance_ratio_test,
     _calc_zscore,
     generate_statistical_signals,
 )
@@ -49,15 +53,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_STATISTICAL_SIGNALS = STATISTICAL_SIGNAL_COLUMNS
 
 
-def test_statistical_signals_all_11_columns_present():
-    """Verify generate_statistical_signals produces exactly the expected statistical signals."""
+def test_statistical_signals_all_20_columns_present():
+    """Verify generate_statistical_signals produces exactly 20 statistical signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_statistical_signals(df)
 
-    assert len(EXPECTED_STATISTICAL_SIGNALS) == 16
+    assert len(EXPECTED_STATISTICAL_SIGNALS) == 20
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 16
+    assert len(res.columns) == 20
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_STATISTICAL_SIGNALS:
@@ -100,7 +104,7 @@ def test_statistical_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 16
+    assert len(res.columns) == 20
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -115,7 +119,7 @@ def test_statistical_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 16
+    assert len(res.columns) == 20
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -129,7 +133,7 @@ def test_statistical_signals_normalization():
     res = generate_statistical_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 16
+    assert len(res.columns) == 20
 
 
 def test_statistical_signals_missing_columns():
@@ -253,6 +257,103 @@ def test_linreg_slope_and_cross_direct():
     assert cross_sig.iloc[-1] in [SignalState.BUY, SignalState.HOLD]
 
 
+def test_fractal_dimension_index_direct():
+    """Verify 30-period Fractal Dimension Index trending vs consolidating regimes with SMA20."""
+    # Strong persistent uptrend: FDI < 1.45 and Close > SMA20 -> BUY
+    n = 60
+    close_up = pd.Series(np.linspace(100, 200, n))
+    high_up = close_up + 0.5
+    low_up = close_up - 0.5
+    fdi_up = _calc_fractal_dimension_index(high_up, low_up, close_up, length=30, threshold=1.45)
+
+    # Strong persistent downtrend: FDI < 1.45 and Close < SMA20 -> SELL
+    close_down = pd.Series(np.linspace(200, 100, n))
+    high_down = close_down + 0.5
+    low_down = close_down - 0.5
+    fdi_down = _calc_fractal_dimension_index(
+        high_down, low_down, close_down, length=30, threshold=1.45
+    )
+
+    # High chop / noise: FDI > 1.45 -> HOLD
+    np.random.seed(42)
+    noise_close = pd.Series(100.0 + np.random.uniform(-5, 5, n))
+    noise_high = noise_close + np.random.uniform(1, 4, n)
+    noise_low = noise_close - np.random.uniform(1, 4, n)
+    fdi_chop = _calc_fractal_dimension_index(
+        noise_high, noise_low, noise_close, length=30, threshold=1.45
+    )
+
+    assert fdi_up.iloc[45] == SignalState.BUY
+    assert fdi_down.iloc[45] == SignalState.SELL
+    assert SignalState.HOLD in fdi_chop.iloc[35:].values
+
+
+def test_rolling_half_life_reversion_direct():
+    """Verify Ornstein-Uhlenbeck Half-Life mean reversion regime and Z-score triggers."""
+    np.random.seed(42)
+    n = 150
+    # Mean-reverting AR(1) OU process: lambda ~ -0.08 -> half_life ~ 8.66 in [3, 15]
+    prices = np.zeros(n)
+    prices[0] = 100.0
+    for t in range(1, n):
+        prices[t] = prices[t - 1] - 0.08 * (prices[t - 1] - 100.0) + np.random.randn() * 1.5
+
+    close_s = pd.Series(prices)
+    hl_sig = _calc_rolling_half_life_reversion(
+        close_s, window=30, hl_min=3.0, hl_max=15.0, z_thresh=1.5
+    )
+
+    assert SignalState.BUY in hl_sig.values
+    assert SignalState.SELL in hl_sig.values
+    assert SignalState.HOLD in hl_sig.values
+
+
+def test_variance_ratio_test_direct():
+    """Verify Lo-MacKinlay Variance Ratio test trending structure (VR > 1.25) with ROC5."""
+    np.random.seed(42)
+    n = 100
+    e = np.random.randn(n) * 0.01
+
+    # Autocorrelated positive returns -> VR > 1.25, ROC5 > 0 -> BUY
+    r_up = np.zeros(n)
+    for t in range(1, n):
+        r_up[t] = 0.6 * r_up[t - 1] + e[t] + 0.01
+    close_up = pd.Series(100.0 * np.exp(np.cumsum(r_up)))
+    vr_up = _calc_variance_ratio_test(close_up, q=5, window=30, threshold=1.25)
+
+    # Autocorrelated negative returns -> VR > 1.25, ROC5 < 0 -> SELL
+    r_down = np.zeros(n)
+    for t in range(1, n):
+        r_down[t] = 0.6 * r_down[t - 1] + e[t] - 0.01
+    close_down = pd.Series(100.0 * np.exp(np.cumsum(r_down)))
+    vr_down = _calc_variance_ratio_test(close_down, q=5, window=30, threshold=1.25)
+
+    assert SignalState.BUY in vr_up.values
+    assert SignalState.SELL in vr_down.values
+
+
+def test_rolling_skewness_reversal_direct():
+    """Verify 20-period return skewness reversal triggers on panic/euphoria exhaustion."""
+    np.random.seed(42)
+    # Series with negative skew shock followed by price bounce
+    ret_neg = [0.001] * 40
+    ret_neg[25] = -0.10  # Extreme negative return shock
+    ret_neg[26] = 0.02  # Price turns up (Close > Close[1]) -> BUY
+    close_panic = pd.Series(100.0 * np.exp(np.cumsum(ret_neg)))
+
+    skew_sig_buy = _calc_rolling_skewness_reversal(close_panic, window=20, skew_thresh=1.50)
+    assert skew_sig_buy.iloc[26] == SignalState.BUY
+
+    # Series with positive skew shock followed by price downward turn
+    ret_pos = [0.001] * 40
+    ret_pos[25] = 0.10  # Extreme positive return shock
+    ret_pos[26] = -0.02  # Price turns down (Close < Close[1]) -> SELL
+    close_euphoria = pd.Series(100.0 * np.exp(np.cumsum(ret_pos)))
+
+    skew_sig_sell = _calc_rolling_skewness_reversal(close_euphoria, window=20, skew_thresh=1.50)
+    assert skew_sig_sell.iloc[26] == SignalState.SELL
+
+
 def test_statistical_helpers_edge_cases():
     """Verify helpers handle empty series and window > length gracefully."""
     empty_s = pd.Series(dtype=float)
@@ -262,6 +363,10 @@ def test_statistical_helpers_edge_cases():
     assert len(_calc_rolling_quantile_extremes(empty_s, 20, 0.05, 0.95)) == 0
     assert len(_calc_linreg_slope(empty_s, 14)) == 0
     assert len(_calc_linreg_price_cross(empty_s, 30)) == 0
+    assert len(_calc_fractal_dimension_index(empty_s, empty_s, empty_s, 30)) == 0
+    assert len(_calc_rolling_half_life_reversion(empty_s, 30)) == 0
+    assert len(_calc_variance_ratio_test(empty_s, 5, 30)) == 0
+    assert len(_calc_rolling_skewness_reversal(empty_s, 20)) == 0
 
 
 def test_signals_package_export():
