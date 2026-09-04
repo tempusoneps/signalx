@@ -36,11 +36,11 @@ This document defines the configuration options, parameters, and input/output da
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
-| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 172 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 172 signal columns. |
+| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 230 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 230 signal columns. |
 | `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
 | `naming` | `Literal["code", "semantic"]` | `"code"` | Output column naming format. `"code"` produces compact standardized identifiers (e.g. `TRD001_signal`), while `"semantic"` produces descriptive identifiers (e.g. `trend_sma_cross_5_20_signal`). |
 
-**Return Value**: `pandas.DataFrame` containing all 172 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
+**Return Value**: `pandas.DataFrame` containing all 230 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
 ---
 
@@ -49,7 +49,7 @@ This document defines the configuration options, parameters, and input/output da
 `signalx` CLI is invoked via `signalx <command> [options]`.
 
 ### Subcommand: `generate`
-Extracts all 172 trading signals from an input dataset file.
+Extracts all 230 trading signals from an input dataset file.
 ```bash
 signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress] [--naming {code,semantic}]
 ```

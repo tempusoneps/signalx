@@ -63,9 +63,9 @@ def test_signal_metadata_attributes_and_frozen():
 
 
 def test_catalog_richness_and_validity():
-    assert len(SIGNAL_CATALOG) == 172, f"Expected 172 signals, found {len(SIGNAL_CATALOG)}"
-    assert len(SIGNAL_CODE_CATALOG) == 172, (
-        f"Expected 172 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
+    assert len(SIGNAL_CATALOG) == 230, f"Expected 230 signals, found {len(SIGNAL_CATALOG)}"
+    assert len(SIGNAL_CODE_CATALOG) == 230, (
+        f"Expected 230 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
     )
 
     code_pattern = re.compile(r"^[A-Z]{3}\d{3}_signal$")
@@ -106,13 +106,13 @@ def test_catalog_richness_and_validity():
 
 def test_deterministic_category_codes():
     expected_category_prefixes = {
-        "trend": ("TRD", 41),
-        "momentum": ("MOM", 30),
-        "volatility": ("VOL", 32),
-        "volume": ("VLM", 18),
-        "candlestick": ("CDL", 27),
-        "statistical": ("STA", 16),
-        "composite": ("CMP", 8),
+        "trend": ("TRD", 53),
+        "momentum": ("MOM", 38),
+        "volatility": ("VOL", 42),
+        "volume": ("VLM", 28),
+        "candlestick": ("CDL", 37),
+        "statistical": ("STA", 20),
+        "composite": ("CMP", 12),
     }
 
     for cat, (prefix, expected_count) in expected_category_prefixes.items():
@@ -191,8 +191,8 @@ def test_bidirectional_mappings():
     code_to_name = get_code_to_name_map()
     name_to_code = get_name_to_code_map()
 
-    assert len(code_to_name) == 172
-    assert len(name_to_code) == 172
+    assert len(code_to_name) == 230
+    assert len(name_to_code) == 230
 
     assert code_to_name["TRD001_signal"] == "trend_sma_cross_5_20_signal"
     assert name_to_code["trend_sma_cross_5_20_signal"] == "TRD001_signal"

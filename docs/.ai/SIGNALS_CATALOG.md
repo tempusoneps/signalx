@@ -1,21 +1,21 @@
-# SignalX Signals Catalog (172 Signals)
+# SignalX Signals Catalog (230 Signals)
 
-`signalx` provides 172 standardized trading signals partitioned across 7 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 230 standardized trading signals partitioned across 7 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
 | Category | Count | Primary Focus |
 | :--- | :--- | :--- |
-| **Candlestick** | 27 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
-| **Composite** | 8 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
-| **Momentum** | 30 | Oscillators, overbought/oversold boundaries, and speed of price change |
-| **Statistical** | 16 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
-| **Trend** | 41 | Directional trend following, moving average crossovers, MACD, and regime tracking |
-| **Volatility** | 32 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
-| **Volume** | 18 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **172** | **Full Quantitative Feature Suite** |
+| **Candlestick** | 37 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
+| **Composite** | 12 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
+| **Momentum** | 38 | Oscillators, overbought/oversold boundaries, and speed of price change |
+| **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
+| **Trend** | 53 | Directional trend following, moving average crossovers, MACD, and regime tracking |
+| **Volatility** | 42 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
+| **Volume** | 28 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
+| **Total** | **230** | **Full Quantitative Feature Suite** |
 
-## Candlestick Signals (27 Signals)
+## Candlestick Signals (37 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -46,8 +46,18 @@
 | `CDL025_signal` | `cdl_break_retest_signal` | Break and Retest of 10-period High/Low extremes | `signalx_native` | Close[1] breaks 10-bar High and current bar pulls back and holds above the level | Close[1] breaks 10-bar Low and current bar bounces and stays below the level |
 | `CDL026_signal` | `cdl_trend_exhaustion_signal` | Trend Exhaustion (Counter-trend reaction after 3-bar directional move) | `signalx_native` | Close > Close[1] after 2 prior lower closes (Bullish exhaustion bounce) | Close < Close[1] after 2 prior higher closes (Bearish exhaustion pullback) |
 | `CDL027_signal` | `cdl_final_push_signal` | Final Push (Higher/lower close on diminishing volume) | `signalx_native` | Close > Close[1] > Close[2] on declining Volume (Bullish exhaustion push) | Close < Close[1] < Close[2] on declining Volume (Bearish exhaustion push) |
+| `CDL028_signal` | `cdl_fvg_bullish_mitigation_signal` | Fair Value Gap (FVG) Bullish Mitigation & Invalidation | `signalx_native` | Low retraces into Bullish FVG [High[t-2], Low[t]] zone and Close > Open | Close breaks below Bullish FVG bottom High[t-2] |
+| `CDL029_signal` | `cdl_fvg_bearish_mitigation_signal` | Fair Value Gap (FVG) Bearish Mitigation & Invalidation | `signalx_native` | Close breaks above Bearish FVG top Low[t-2] | High retraces into Bearish FVG [High[t], Low[t-2]] zone and Close < Open |
+| `CDL030_signal` | `cdl_order_block_retest_signal` | Order Block (OB) Retest and Mitigation | `signalx_native` | Price retraces into Bullish OB body with Close > Open | Price retraces into Bearish OB body with Close < Open |
+| `CDL031_signal` | `cdl_break_of_structure_signal` | Break of Structure (BOS) aligned with trend filter | `signalx_native` | Close > 10-bar High and SMA20 > SMA50 (Bullish BOS) | Close < 10-bar Low and SMA20 < SMA50 (Bearish BOS) |
+| `CDL032_signal` | `cdl_change_of_character_signal` | Change of Character (CHoCH) structural trend reversal | `signalx_native` | Close > 5-bar High when prior 10-bar regime had SMA20 < SMA50 | Close < 5-bar Low when prior 10-bar regime had SMA20 > SMA50 |
+| `CDL033_signal` | `cdl_judas_swing_signal` | Judas Swing (False breakout stop-hunt with reversal close) | `signalx_native` | Low < 5-bar Low and Close > Open in upper half of bar (Bullish Judas Swing) | High > 5-bar High and Close < Open in lower half of bar (Bearish Judas Swing) |
+| `CDL034_signal` | `cdl_inducement_sweep_signal` | Inducement Sweep (Minor extreme sweep with >=50% wick rejection) | `signalx_native` | Low < Low[1] with lower wick >= 50% range and Close > Open | High > High[1] with upper wick >= 50% range and Close < Open |
+| `CDL035_signal` | `cdl_thrust_bar_signal` | Thrust Bar (Body >= 75% range and >= 1.8x SMA20 body) | `signalx_native` | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close > Open (Bullish thrust) | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close < Open (Bearish thrust) |
+| `CDL036_signal` | `cdl_narrow_range_7_breakout_signal` | Narrow Range 7 (NR7) volatility compression breakout | `signalx_native` | Close breaks above High of NR7 bar (Bullish NR7 breakout) | Close breaks below Low of NR7 bar (Bearish NR7 breakdown) |
+| `CDL037_signal` | `cdl_wide_range_reversal_signal` | Wide Range Reversal (Range >= 2.5x SMA20 range with extreme close) | `signalx_native` | Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar | Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar |
 
-## Composite Signals (8 Signals)
+## Composite Signals (12 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -59,8 +69,12 @@
 | `CMP006_signal` | `comp_breakout_volume_confirmed_signal` | Price breakout confirmed with volume expansion | `signalx_native` | Volatility breakout (Donchian/BB) confirmed with Volume Spike | Volatility breakdown (Donchian/BB) confirmed with Volume Spike |
 | `CMP007_signal` | `comp_mean_reversion_confluence_signal` | Multi-oscillator mean reversion confluence (RSI + BB lower + Z-Score) | `signalx_native` | Confluence of Oversold RSI (<30), lower BB touch, and Price Z-score < -2.0 | Confluence of Overbought RSI (>70), upper BB touch, and Price Z-score > +2.0 |
 | `CMP008_signal` | `comp_macd_hist_candle_reversal_signal` | MACD Histogram turning point combined with candlestick reversal confirmation | `signalx_native` | MACD Histogram trough reversal in negative zone with bullish engulfing close | MACD Histogram peak reversal in positive zone with bearish engulfing close |
+| `CMP009_signal` | `comp_smc_trend_volume_confluence_signal` | Smart Money Alignment Confluence (FVG/OB + SMA20>SMA50 + Volume > SMA20(Volume)) | `signalx_native` | Bullish SMC structure (FVG mitigation / OB retest) with SMA20 > SMA50 and Volume > SMA20(Volume) | Bearish SMC structure (FVG mitigation / OB retest) with SMA20 < SMA50 and Volume > SMA20(Volume) |
+| `CMP010_signal` | `comp_triple_screen_trading_system_signal` | Alexander Elder Triple Screen Trading System | `signalx_native` | EMA50 rising (Screen 1) + RSI/Stoch oversold pullback (Screen 2) + Close > prev High (Screen 3) | EMA50 falling (Screen 1) + RSI/Stoch overbought pullback (Screen 2) + Close < prev Low (Screen 3) |
+| `CMP011_signal` | `comp_squeeze_momentum_volume_surge_signal` | Squeeze Momentum Breakout with Volume Surge | `signalx_native` | Bullish Squeeze Pro breakout release with Volume >= 1.5x SMA20(Volume) | Bearish Squeeze Pro breakdown release with Volume >= 1.5x SMA20(Volume) |
+| `CMP012_signal` | `comp_master_ensemble_v2_signal` | Master Ensemble v2: Advanced weighted consensus across all library signals (>=30% threshold) | `signalx_native` | >=30% of all active signals vote BUY and buy votes exceed sell votes | >=30% of all active signals vote SELL and sell votes exceed buy votes |
 
-## Momentum Signals (30 Signals)
+## Momentum Signals (38 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -94,8 +108,16 @@
 | `MOM028_signal` | `mom_shift_3_bar_signal` | 3-bar short-term momentum turnaround shift | `signalx_native` | Close > Close[1] after Close[1] < Close[2] (Bullish momentum shift) | Close < Close[1] after Close[1] > Close[2] (Bearish momentum shift) |
 | `MOM029_signal` | `mom_return_momentum_5_signal` | 5-bar cumulative return momentum (> +2% / < -2%) | `signalx_native` | 5-bar return > +2.0% | 5-bar return < -2.0% |
 | `MOM030_signal` | `mom_extreme_move_10_signal` | 10-bar extreme move price extension (> +5% / < -5%) | `signalx_native` | 10-bar return > +5.0% | 10-bar return < -5.0% |
+| `MOM031_signal` | `mom_rmi_ob_os_14_signal` | Relative Momentum Index (14, 5) overbought (>70) and oversold (<30) thresholds | `signalx_native` | RMI 14 crosses above 30 from oversold zone | RMI 14 crosses below 70 from overbought zone |
+| `MOM032_signal` | `mom_dmi_variable_lookback_signal` | Dynamic Momentum Index (variable lookback 5-30) overbought (>70) and oversold (<30) thresholds | `signalx_native` | DMI crosses above 30 from oversold zone | DMI crosses below 70 from overbought zone |
+| `MOM033_signal` | `mom_coppock_curve_zero_cross_signal` | Coppock Curve zero centerline crossover | `pandas_ta` | Coppock Curve crosses above 0 | Coppock Curve crosses below 0 |
+| `MOM034_signal` | `mom_stoch_momentum_index_cross_signal` | Stochastic Momentum Index (SMI 13, 25, 2) signal line crossover in extreme zones | `pandas_ta` | SMI crosses above signal line when SMI < -40 (oversold) | SMI crosses below signal line when SMI > +40 (overbought) |
+| `MOM035_signal` | `mom_schaff_trend_cycle_cross_signal` | Schaff Trend Cycle (STC 23, 50, 10) 25/75 cycle threshold crossover | `pandas_ta` | STC crosses above 25 (bullish cycle initiation) | STC crosses below 75 (bearish cycle initiation) |
+| `MOM036_signal` | `mom_cmo_divergence_signal` | Chande Momentum Oscillator (CMO 14) 5-bar regular divergence | `signalx_native` | Low < Low[5] while CMO > CMO[5] (Bullish CMO divergence) | High > High[5] while CMO < CMO[5] (Bearish CMO divergence) |
+| `MOM037_signal` | `mom_kst_oscillator_cross_signal` | Know Sure Thing (KST) oscillator and 9-SMA signal line crossover | `ta` | KST line crosses above 9-SMA signal line | KST line crosses below 9-SMA signal line |
+| `MOM038_signal` | `mom_demarker_indicator_cross_signal` | Tom DeMarker Indicator (DeM 14) 0.30/0.70 threshold crossover | `signalx_native` | DeMarker 14 crosses above 0.30 from oversold zone | DeMarker 14 crosses below 0.70 from overbought zone |
 
-## Statistical Signals (16 Signals)
+## Statistical Signals (20 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -115,8 +137,12 @@
 | `STA014_signal` | `stat_range_mid_reversion_10_signal` | 10-period High/Low Range Midpoint Reversion | `signalx_native` | Close < (Highest(High, 10) + Lowest(Low, 10)) / 2 (Below range midpoint) | Close > (Highest(High, 10) + Lowest(Low, 10)) / 2 (Above range midpoint) |
 | `STA015_signal` | `stat_price_acceleration_signal` | 1-bar Price Change Acceleration (Delta Momentum) | `signalx_native` | (Close - Close[1]) > (Close[1] - Close[2]) (Price accelerating upward) | (Close - Close[1]) < (Close[1] - Close[2]) (Price accelerating downward) |
 | `STA016_signal` | `stat_mean_distance_5pct_signal` | Mean Distance Deviation (> 5% away from 20-period SMA) | `signalx_native` | Close < SMA20 * 0.95 (Deep discount > 5% below SMA20) | Close > SMA20 * 1.05 (Stretched premium > 5% above SMA20) |
+| `STA017_signal` | `stat_fractal_dimension_index_signal` | 30-period Fractal Dimension Index (FDI < 1.45 trending regime with SMA20 filter) | `signalx_native` | FDI 30 < 1.45 and Close > SMA20 (Persistent trending bull regime) | FDI 30 < 1.45 and Close < SMA20 (Persistent trending bear regime) |
+| `STA018_signal` | `stat_rolling_half_life_reversion_signal` | Ornstein-Uhlenbeck 30-period Half-Life Mean Reversion (HL in [3, 15] with Z-score +/-1.8) | `signalx_native` | Half-Life in [3, 15] and Price Z-Score 20 < -1.8 (Mean-reverting oversold buy) | Half-Life in [3, 15] and Price Z-Score 20 > +1.8 (Mean-reverting overbought sell) |
+| `STA019_signal` | `stat_variance_ratio_test_signal` | Lo-MacKinlay Variance Ratio Test (q=5, 30-period, VR > 1.25 trending structure) | `signalx_native` | Variance Ratio > 1.25 and ROC5 > 0 (Trending bullish market structure) | Variance Ratio > 1.25 and ROC5 < 0 (Trending bearish market structure) |
+| `STA020_signal` | `stat_rolling_skewness_reversal_signal` | 20-period Rolling Return Skewness Reversal (Skew < -1.5 panic absorption / > +1.5 euphoria exhaustion) | `signalx_native` | Return Skewness 20 < -1.50 and Close > Close[1] (Panic selling absorption reversal buy) | Return Skewness 20 > +1.50 and Close < Close[1] (Euphoria exhaustion reversal sell) |
 
-## Trend Signals (41 Signals)
+## Trend Signals (53 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -161,8 +187,20 @@
 | `TRD039_signal` | `trend_price_cross_sma20_signal` | Price crossover with 20-period Simple Moving Average | `signalx_native` | Close crosses above SMA 20 | Close crosses below SMA 20 |
 | `TRD040_signal` | `trend_prev_bar_break_signal` | Price breakout above previous bar high or below previous bar low | `signalx_native` | Close > High[1] (Prior high breakout) | Close < Low[1] (Prior low breakdown) |
 | `TRD041_signal` | `trend_tii_14_signal` | Trend Intensity Index (TII 14) trend regime boundaries | `pandas_ta` | TII 14 > 80 (Strong upward trend intensity) | TII 14 < 20 (Strong downward trend intensity) |
+| `TRD042_signal` | `trend_ehlers_super_smoother_cross_signal` | Ehlers 2-Pole Super Smoother Filter (Length 10) price crossover | `signalx_native` | Close crosses above Ehlers Super Smoother 10 | Close crosses below Ehlers Super Smoother 10 |
+| `TRD043_signal` | `trend_mcginley_dynamic_cross_signal` | McGinley Dynamic (14) adaptive moving average price crossover | `signalx_native` | Close crosses above McGinley Dynamic 14 | Close crosses below McGinley Dynamic 14 |
+| `TRD044_signal` | `trend_gmma_ribbon_expansion_signal` | Guppy Multiple Moving Average (GMMA) fast vs slow ribbon expansion | `signalx_native` | Fast GMMA ribbon expands above Slow GMMA ribbon | Fast GMMA ribbon expands below Slow GMMA ribbon |
+| `TRD045_signal` | `trend_gmma_compression_breakout_signal` | Guppy GMMA compression ribbon breakout | `signalx_native` | Close breaks above GMMA ribbon following compression (spread <= 1.5%) | Close breaks below GMMA ribbon following compression (spread <= 1.5%) |
+| `TRD046_signal` | `trend_rainbow_ema_alignment_signal` | Rainbow 5-EMA (8, 13, 21, 34, 55) full sequential trend alignment | `signalx_native` | EMA 8 > EMA 13 > EMA 21 > EMA 34 > EMA 55 (Bullish Rainbow) | EMA 8 < EMA 13 < EMA 21 < EMA 34 < EMA 55 (Bearish Rainbow) |
+| `TRD047_signal` | `trend_ehlers_instantaneous_trend_signal` | Ehlers Instantaneous Trendline price crossover | `signalx_native` | Close crosses above Instantaneous Trendline | Close crosses below Instantaneous Trendline |
+| `TRD048_signal` | `trend_coral_trend_filter_signal` | Coral smoothed multi-order EMA filter slope direction | `signalx_native` | Coral Trend Filter is rising (Slope > 0) | Coral Trend Filter is falling (Slope < 0) |
+| `TRD049_signal` | `trend_supertrend_atr_20_5_signal` | Conservative slow SuperTrend (20, 5.0) trend direction | `pandas_ta` | SuperTrend (20, 5.0) bullish direction | SuperTrend (20, 5.0) bearish direction |
+| `TRD050_signal` | `trend_donchian_middle_cross_20_signal` | Donchian Channel 20 median line price crossover | `signalx_native` | Close crosses above Donchian 20 median line | Close crosses below Donchian 20 median line |
+| `TRD051_signal` | `trend_alligator_lips_jaw_cross_signal` | Bill Williams Alligator Lips (5, shift 3) and Jaw (13, shift 8) crossover | `signalx_native` | Alligator Lips crosses above Alligator Jaw | Alligator Lips crosses below Alligator Jaw |
+| `TRD052_signal` | `trend_alma_cross_9_signal` | Arnaud Legoux Moving Average (ALMA 9, offset 0.85, sigma 6) price crossover | `pandas_ta` | Close crosses above ALMA 9 | Close crosses below ALMA 9 |
+| `TRD053_signal` | `trend_zero_lag_ema_cross_21_signal` | Zero-Lag EMA (ZLEMA 21) price crossover | `signalx_native` | Close crosses above ZLEMA 21 | Close crosses below ZLEMA 21 |
 
-## Volatility Signals (32 Signals)
+## Volatility Signals (42 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -198,8 +236,18 @@
 | `VOL030_signal` | `vol_linreg_channel_reversal_20_signal` | 20-period Linear Regression Channel lower/upper band reversal | `signalx_native` | Close dips below lower 2-std linreg band and bounces back | Close exceeds upper 2-std linreg band and reverses back |
 | `VOL031_signal` | `vol_keltner_reversal_20_signal` | Keltner Channel (20, 2.0 ATR) outer band reversal | `signalx_native` | Close dips below lower Keltner Channel and bounces back | Close exceeds upper Keltner Channel and reverses back |
 | `VOL032_signal` | `vol_envelope_breakout_20_signal` | Moving Average Envelope (20, +/-2.5%) breakout | `signalx_native` | Close > SMA20 * 1.025 (Upper envelope breakout) | Close < SMA20 * 0.975 (Lower envelope breakdown) |
+| `VOL033_signal` | `vol_rvi_ob_os_14_signal` | Relative Volatility Index (RVI 14 period) overbought/oversold crossover | `signalx_native` | RVI 14 crosses above 30 from oversold | RVI 14 crosses below 70 from overbought |
+| `VOL034_signal` | `vol_garman_klass_expansion_signal` | Garman-Klass Volatility Estimator rolling expansion surge | `signalx_native` | GK Volatility > 90th percentile and Close > Close[1] | GK Volatility > 90th percentile and Close < Close[1] |
+| `VOL035_signal` | `vol_parkinson_volatility_surge_signal` | Parkinson High-Low Volatility surge >= 1.8x SMA20 | `signalx_native` | Parkinson Volatility >= 1.8 * SMA20(Park) and Close > Open | Parkinson Volatility >= 1.8 * SMA20(Park) and Close < Open |
+| `VOL036_signal` | `vol_squeeze_momentum_pro_signal` | LazyBear Squeeze Pro BB inside KC breakout with LinReg momentum | `signalx_native` | Squeeze releases (BB width > KC width) with positive momentum slope | Squeeze releases (BB width > KC width) with negative momentum slope |
+| `VOL037_signal` | `vol_keltner_width_squeeze_signal` | Keltner Channel Bandwidth compression (< 0.70x SMA20 Width) | `signalx_native` | KC Width < 0.70 * SMA20(KC Width) and Close >= SMA20 | KC Width < 0.70 * SMA20(KC Width) and Close < SMA20 |
+| `VOL038_signal` | `vol_atr_ratio_fast_slow_signal` | ATR Fast/Slow Ratio (ATR(5) / ATR(20) > 1.40) volatility explosion | `signalx_native` | ATR(5) / ATR(20) > 1.40 and Close > Close[1] | ATR(5) / ATR(20) > 1.40 and Close < Close[1] |
+| `VOL039_signal` | `vol_chandelier_exit_reversal_signal` | Chandelier Exit (22 period, 3.0 ATR) trailing stop direction reversal | `signalx_native` | Close flips above Short Stop (Lowest Low 22 + 3*ATR22) | Close drops below Long Stop (Highest High 22 - 3*ATR22) |
+| `VOL040_signal` | `vol_mass_index_reversal_bulge_signal` | Mass Index (25 period) reversal bulge (>27.0 then <26.5) | `signalx_native` | Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) rising | Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) falling |
+| `VOL041_signal` | `vol_normalized_atr_stretch_signal` | Normalized ATR (NATR = ATR(14)/Close * 100) extreme expansion >= 2.0x SMA20 | `signalx_native` | NATR >= 2.0 * SMA20(NATR) and Close > Open | NATR >= 2.0 * SMA20(NATR) and Close < Open |
+| `VOL042_signal` | `vol_dual_thrust_range_breakout_signal` | Dual Thrust 5-period range breakout | `signalx_native` | Close > Open + 0.5 * Range(5) | Close < Open - 0.5 * Range(5) |
 
-## Volume Signals (18 Signals)
+## Volume Signals (28 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -221,3 +269,13 @@
 | `VLM016_signal` | `volume_trend_3_bar_signal` | 3-bar volume trend (expansion vs contraction) | `signalx_native` | 3 consecutive bars of rising volume (Volume > Volume[1] > Volume[2]) | 3 consecutive bars of falling volume (Volume < Volume[1] < Volume[2]) |
 | `VLM017_signal` | `volume_price_divergence_signal` | Volume-Price divergence (absorption vs churn) | `signalx_native` | Close < Close[1] while Volume > Volume[1] (Bullish absorption) | Close > Close[1] while Volume > Volume[1] (Bearish churn/effort vs result) |
 | `VLM018_signal` | `volume_amv_cross_20_signal` | Adaptive Moving Volume (AMV) 20-period price crossover | `signalx_native` | Close crosses above 20-period AMV baseline | Close crosses below 20-period AMV baseline |
+| `VLM019_signal` | `volume_klinger_osc_cross_signal` | Klinger Volume Oscillator (34, 55, 13) signal cross | `signalx_native` | KVO crosses above KVO signal (13) | KVO crosses below KVO signal (13) |
+| `VLM020_signal` | `volume_elder_ray_bull_bear_signal` | Elder Ray Index Bull & Bear Power indicator | `signalx_native` | Bear Power < 0 and rising with Bull Power > 0 | Bull Power > 0 and falling with Bear Power < 0 |
+| `VLM021_signal` | `volume_climax_absorption_signal` | Volume Climax (>3.0x SMA20) with long wick absorption | `signalx_native` | Volume >= 3.0x SMA20 with lower wick >= 40% range and Close > Open | Volume >= 3.0x SMA20 with upper wick >= 40% range and Close < Open |
+| `VLM022_signal` | `volume_twiggs_money_flow_cross_signal` | Twiggs Money Flow (21 period) zero centerline crossover | `signalx_native` | Twiggs Money Flow 21 crosses above 0 | Twiggs Money Flow 21 crosses below 0 |
+| `VLM023_signal` | `volume_nvi_pvi_cross_signal` | Negative Volume Index (NVI) 20-period EMA crossover | `signalx_native` | NVI crosses above 20-period EMA | NVI crosses below 20-period EMA |
+| `VLM024_signal` | `volume_vwap_anchored_dev1_signal` | Rolling 20-period VWAP +-1.0 std standard deviation band reversal | `signalx_native` | Low <= VWAP - 1.0 std and Close > VWAP - 1.0 std (Lower band bounce) | High >= VWAP + 1.0 std and Close < VWAP + 1.0 std (Upper band rejection) |
+| `VLM025_signal` | `volume_vwap_anchored_dev3_signal` | Rolling 20-period VWAP +-3.0 std extreme mean-reversion bands | `signalx_native` | Low <= VWAP - 3.0 std or Close <= VWAP - 3.0 std (Extreme oversold touch) | High >= VWAP + 3.0 std or Close >= VWAP + 3.0 std (Extreme overbought touch) |
+| `VLM026_signal` | `volume_delta_proxy_surge_signal` | Intrabar Delta Volume Proxy aggressive directional surge | `signalx_native` | Delta Buy Volume > 70% total volume and Close > Open | Delta Sell Volume > 70% total volume and Close < Open |
+| `VLM027_signal` | `volume_vwma_sma_divergence_signal` | VWMA(20) vs SMA(20) Divergence (volume-weighted accumulation/distribution) | `signalx_native` | VWMA(20) > SMA(20) * 1.005 (Accumulation premium) | VWMA(20) < SMA(20) * 0.995 (Distribution discount) |
+| `VLM028_signal` | `volume_volume_weighted_rsi_14_signal` | Volume-Weighted RSI (14 period) overbought/oversold threshold crossover | `signalx_native` | Volume-Weighted RSI 14 crosses above 30 from oversold | Volume-Weighted RSI 14 crosses below 70 from overbought |
