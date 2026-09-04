@@ -4,44 +4,34 @@ This document establishes the Git workflow, commit message standards, branch nam
 
 ---
 
-## 1. Commit Message Format (Conventional Commits)
+## 1. Commit Message Format
 
-SignalX strictly enforces the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/) specification:
+SignalX enforces the following structured commit message format:
 
 ```
-<type>(<scope>): <short summary in lowercase>
+<branch>(<next_tag|next_version>): <short summary in lowercase>
 
 [optional body providing detailed context, rationale, or breaking changes]
 
 [optional footer(s) such as Closes #123, Refs #456]
 ```
 
-### Allowed Types
-| Type | Description | Example |
-| :--- | :--- | :--- |
-| `feat` | Adding a new signal, indicator, CLI command, or feature | `feat(signals): add 10 SMC and candlestick signals (CDL028-CDL037)` |
-| `fix` | Fixing a bug, calculation error, or edge case | `fix(volatility): prevent division by zero in NATR stretch calculation` |
-| `perf` | Optimizing execution speed, memory footprint, or vectorization | `perf(core): vectorize master ensemble consensus calculation` |
-| `test` | Adding or updating unit/integration tests | `test(statistical): add test cases for FDI and variance ratio` |
-| `docs` | Documentation changes, catalog updates, docstrings | `docs(catalog): update signals catalog to 230 signals` |
-| `refactor` | Code restructuring without changing external behavior | `refactor(trend): extract shared moving average helper` |
-| `style` | Formatting, whitespace, imports sorting (`ruff format`) | `style: format signals modules according to ruff` |
-| `chore` | Build scripts, dependencies, CI/CD, repository configuration | `chore(deps): bump pandas-ta and scipy dependencies` |
+### Components
+1. **`<branch>`**: The current working branch name (e.g. `develop`, `feature/signals-expansion`, `main`).
+2. **`<next_tag|next_version>`**: The upcoming semantic version tag or target milestone release (e.g. `v0.2.0`, `v1.0.0`, `v0.1.5`).
+3. **`<short summary in lowercase>`**: Concise imperative description of the change starting with a lowercase letter (no trailing period).
 
-### Scopes
-Recommended scopes to keep git history modular:
-- `signals` (General signal engine changes)
-- `candlestick`, `trend`, `volume`, `volatility`, `momentum`, `statistical`, `composite` (Category modules)
-- `core` (Signal orchestration, `generate_signals`)
-- `metadata` (Signal catalog, code/name mapping)
-- `cli` (Command-line interface commands)
-- `utils` (Normalization, I/O, statistics)
-- `catalog` (Documentation catalog)
+### Examples
+- `develop(v0.2.0): add 10 smc and candlestick signals (cdl028-cdl037)`
+- `develop(v0.2.0): add 12 dsp and trend signals (trd042-trd053)`
+- `develop(v0.2.0): fix natr stretch division by zero error`
+- `feature/smc-signals(v0.3.0): implement fvg mitigation and order block retest`
+- `main(v1.0.0): release signalx 230 quantitative signals suite`
 
 ### Rules & Formatting
 - **Subject line length**: Maximum 72 characters.
 - **Tense & Mood**: Use imperative present tense ("add", "fix", "update", NOT "added", "fixing").
-- **Case**: Summary starts with a lowercase letter (e.g. `feat(volume): implement klinger volume oscillator`).
+- **Case**: Summary starts with a lowercase letter.
 - **No trailing period**: Do not end the subject line with a period `.`.
 
 ---
