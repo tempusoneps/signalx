@@ -1703,6 +1703,34 @@ def _initialize_default_catalog() -> None:
             "Close < SMA20 * 0.95 (Deep discount > 5% below SMA20)",
             "Close > SMA20 * 1.05 (Stretched premium > 5% above SMA20)",
         ),
+        (
+            "stat_fractal_dimension_index_signal",
+            "30-period Fractal Dimension Index (FDI < 1.45 trending regime with SMA20 filter)",
+            "signalx_native",
+            "FDI 30 < 1.45 and Close > SMA20 (Persistent trending bull regime)",
+            "FDI 30 < 1.45 and Close < SMA20 (Persistent trending bear regime)",
+        ),
+        (
+            "stat_rolling_half_life_reversion_signal",
+            "Ornstein-Uhlenbeck 30-period Half-Life Mean Reversion (HL in [3, 15] with Z-score +/-1.8)",
+            "signalx_native",
+            "Half-Life in [3, 15] and Price Z-Score 20 < -1.8 (Mean-reverting oversold buy)",
+            "Half-Life in [3, 15] and Price Z-Score 20 > +1.8 (Mean-reverting overbought sell)",
+        ),
+        (
+            "stat_variance_ratio_test_signal",
+            "Lo-MacKinlay Variance Ratio Test (q=5, 30-period, VR > 1.25 trending structure)",
+            "signalx_native",
+            "Variance Ratio > 1.25 and ROC5 > 0 (Trending bullish market structure)",
+            "Variance Ratio > 1.25 and ROC5 < 0 (Trending bearish market structure)",
+        ),
+        (
+            "stat_rolling_skewness_reversal_signal",
+            "20-period Rolling Return Skewness Reversal (Skew < -1.5 panic absorption / > +1.5 euphoria exhaustion)",
+            "signalx_native",
+            "Return Skewness 20 < -1.50 and Close > Close[1] (Panic selling absorption reversal buy)",
+            "Return Skewness 20 > +1.50 and Close < Close[1] (Euphoria exhaustion reversal sell)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(stat_definitions, start=1):
         register_signal(
