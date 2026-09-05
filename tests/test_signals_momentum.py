@@ -8,6 +8,7 @@ from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.momentum import (
     MOMENTUM_SIGNAL_COLUMNS,
     _bound_signal,
+    _calc_afternoon_open_breakout,
     _calc_ao_saucer,
     _calc_cmo,
     _calc_cmo_divergence,
@@ -50,20 +51,22 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_MOMENTUM_SIGNALS = MOMENTUM_SIGNAL_COLUMNS
 
 
-def test_momentum_signals_all_38_columns_present():
-    """Verify generate_momentum_signals produces exactly the 38 expected momentum signals."""
+def test_momentum_signals_all_39_columns_present():
+    """Verify generate_momentum_signals produces exactly the 39 expected momentum signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_momentum_signals(df)
 
-    assert len(EXPECTED_MOMENTUM_SIGNALS) == 38
+    assert len(EXPECTED_MOMENTUM_SIGNALS) == 39
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 38
+    assert len(res.columns) == 39
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_MOMENTUM_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+
+    assert "mom_afternoon_open_breakout_signal" in res.columns
 
 
 def test_momentum_signals_all_states_valid():
@@ -101,7 +104,7 @@ def test_momentum_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 38
+    assert len(res.columns) == 39
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -116,7 +119,7 @@ def test_momentum_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 38
+    assert len(res.columns) == 39
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -136,7 +139,7 @@ def test_momentum_signals_normalization():
     res = generate_momentum_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 38
+    assert len(res.columns) == 39
 
 
 def test_momentum_signals_missing_columns():
@@ -375,3 +378,82 @@ def test_demarker_indicator_cross_direct():
     sig = _calc_threshold_reversal(dem_syn, lower=0.30, upper=0.70)
     assert sig.iloc[1] == SignalState.BUY
     assert sig.iloc[4] == SignalState.SELL
+
+
+def test_afternoon_open_breakout_direct():
+    """Verify Afternoon Session Open (13:00 - 13:30) Directional Breakout."""
+    # Edge cases: empty series / empty DataFrame
+    empty_df = pd.DataFrame(columns=["high", "low", "close"])
+    empty_s = pd.Series([], dtype=float)
+    assert len(_calc_afternoon_open_breakout(empty_df, empty_s, empty_s, empty_s)) == 0
+    assert len(_calc_afternoon_open_breakout(None, empty_s, empty_s, empty_s)) == 0
+
+    # Test with timestamps
+    dates = [
+        # Morning session (09:00 - 11:30)
+        "2026-09-01 09:00",
+        "2026-09-01 10:00",
+        "2026-09-01 11:00",
+        "2026-09-01 11:25",
+        # Afternoon open session (13:00 - 13:30)
+        "2026-09-01 13:00",
+        "2026-09-01 13:05",
+        "2026-09-01 13:15",
+        "2026-09-01 13:25",
+        # Post afternoon open session (> 13:30)
+        "2026-09-01 13:35",
+        "2026-09-01 14:00",
+    ]
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(dates),
+            "open": [100.0, 101.0, 95.0, 93.0, 108.0, 95.0, 98.0, 105.0, 114.0, 85.0],
+            "high": [105.0, 110.0, 104.0, 102.0, 113.0, 96.0, 102.0, 116.0, 122.0, 88.0],
+            "low": [95.0, 92.0, 90.0, 93.0, 107.0, 87.0, 97.0, 104.0, 112.0, 78.0],
+            "close": [100.0, 108.0, 91.0, 98.0, 112.0, 88.0, 100.0, 115.0, 120.0, 80.0],
+            "volume": [1000.0] * 10,
+        }
+    )
+
+    sig = _calc_afternoon_open_breakout(df, df["high"], df["low"], df["close"])
+
+    # Morning bars (0..3) must be NONE
+    for i in range(4):
+        assert sig.iloc[i] == SignalState.NONE, f"Morning bar {i} must be NONE"
+
+    # Afternoon open bars
+    assert sig.iloc[4] == SignalState.BUY
+    assert sig.iloc[5] == SignalState.SELL
+    assert sig.iloc[6] == SignalState.NONE
+    assert sig.iloc[7] == SignalState.BUY
+
+    # Outside afternoon open bars
+    assert sig.iloc[8] == SignalState.NONE
+    assert sig.iloc[9] == SignalState.NONE
+
+    # Synthetic fallback (no timestamps, 50 bars per session)
+    synth_n = 50
+    synth_df = pd.DataFrame(
+        {
+            "open": [100.0] * synth_n,
+            "high": [105.0] * synth_n,
+            "low": [95.0] * synth_n,
+            "close": [100.0] * synth_n,
+            "volume": [1000.0] * synth_n,
+        }
+    )
+    synth_df.loc[10, "high"] = 110.0
+    synth_df.loc[15, "low"] = 90.0
+
+    synth_df.loc[30, "close"] = 112.0  # Buy
+    synth_df.loc[31, "close"] = 88.0  # Sell
+    synth_df.loc[32, "close"] = 100.0  # None
+    synth_df.loc[36, "close"] = 115.0  # None (post afternoon open)
+
+    sig_synth = _calc_afternoon_open_breakout(
+        synth_df, synth_df["high"], synth_df["low"], synth_df["close"]
+    )
+    assert sig_synth.iloc[30] == SignalState.BUY
+    assert sig_synth.iloc[31] == SignalState.SELL
+    assert sig_synth.iloc[32] == SignalState.NONE
+    assert sig_synth.iloc[36] == SignalState.NONE
