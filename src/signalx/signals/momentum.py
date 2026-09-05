@@ -7,6 +7,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 MOMENTUM_SIGNAL_COLUMNS = [
@@ -48,6 +49,7 @@ MOMENTUM_SIGNAL_COLUMNS = [
     "mom_cmo_divergence_signal",
     "mom_kst_oscillator_cross_signal",
     "mom_demarker_indicator_cross_signal",
+    "mom_afternoon_open_breakout_signal",
 ]
 
 
@@ -688,8 +690,59 @@ def _calc_demarker(high: pd.Series, low: pd.Series, length: int = 14) -> pd.Seri
     return dem
 
 
+def _calc_afternoon_open_breakout(
+    df: pd.DataFrame | None,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+) -> pd.Series:
+    """Calculate Afternoon Session Open (13:00 - 13:30) Directional Breakout.
+
+    Determines morning session range: bars where ctx.bar_in_session < 30.
+    Evaluated only during ctx.is_afternoon_open (13:00 <= time <= 13:30 or session bars 30..35).
+
+    Triggers:
+      - ctx.is_afternoon_open & (close > morning_high) -> BUY
+      - ctx.is_afternoon_open & (close < morning_low) -> SELL
+      - Outside ctx.is_afternoon_open or inside morning range -> NONE
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    if df is None:
+        df = pd.DataFrame({"high": high, "low": low, "close": close}, index=close.index)
+
+    ctx = extract_session_context(df)
+
+    has_time = any(
+        str(c).strip().lower() in ["date", "datetime", "timestamp", "time"] for c in df.columns
+    ) or isinstance(df.index, pd.DatetimeIndex)
+
+    if has_time:
+        morning_mask = (ctx.time_minutes < 12 * 60) & ~ctx.is_afternoon_open
+    else:
+        morning_mask = ctx.bar_in_session < 30
+
+    morning_high = high.where(morning_mask).groupby(ctx.session_id, sort=False).transform("max")
+    morning_low = low.where(morning_mask).groupby(ctx.session_id, sort=False).transform("min")
+
+    is_afternoon = ctx.is_afternoon_open.to_numpy(dtype=bool)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    mh = morning_high.to_numpy(dtype=float, na_value=np.nan)
+    ml = morning_low.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = is_afternoon & ~np.isnan(c) & ~np.isnan(mh) & ~np.isnan(ml)
+    buy = valid & (c > mh)
+    sell = valid & (c < ml)
+
+    condlist = [buy, sell]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    res = np.select(condlist, choicelist, default=SignalState.NONE)
+    return pd.Series(res, index=close.index, dtype=str)
+
+
 def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 38 momentum and oscillator signals from OHLCV dataframe.
+    """Generate all 39 momentum and oscillator signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -701,7 +754,7 @@ def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 38 columns ending with '_signal', with values in
+        DataFrame containing 39 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -915,6 +968,12 @@ def generate_momentum_signals(df: pd.DataFrame, show_progress: bool = False) -> 
         dem = _calc_demarker(high, low, length=14)
         signals["mom_demarker_indicator_cross_signal"] = _calc_threshold_reversal(
             dem, lower=0.30, upper=0.70
+        )
+        pbar.update(1)
+
+        # 28. Afternoon Session Open Directional Breakout (1)
+        signals["mom_afternoon_open_breakout_signal"] = _calc_afternoon_open_breakout(
+            df_norm, high, low, close
         )
         pbar.update(1)
 
