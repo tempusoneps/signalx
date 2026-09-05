@@ -1144,10 +1144,7 @@ def _calc_pre_atc_squeeze(
         atr20 = ta.volatility.AverageTrueRange(
             high=high, low=low, close=close, window=20, fillna=False
         ).average_true_range()
-        if atr20.isna().all():
-            atr20 = (high - low).rolling(20, min_periods=1).mean()
-        else:
-            atr20 = atr20.bfill().fillna((high - low).rolling(20, min_periods=1).mean())
+        atr20 = atr20.fillna((high - low).rolling(20, min_periods=1).mean())
     except Exception:
         atr20 = (high - low).rolling(20, min_periods=1).mean()
 
