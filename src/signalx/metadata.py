@@ -509,7 +509,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 2. MOMENTUM SIGNALS (38 signals)
+    # 2. MOMENTUM SIGNALS (39 signals)
     # -------------------------------------------------------------------------
     mom_definitions = [
         (
@@ -778,6 +778,13 @@ def _initialize_default_catalog() -> None:
             "DeMarker 14 crosses above 0.30 from oversold zone",
             "DeMarker 14 crosses below 0.70 from overbought zone",
         ),
+        (
+            "mom_afternoon_open_breakout_signal",
+            "VN30F1M 5m afternoon session open (13:00-13:30) momentum breakout above/below morning range",
+            "signalx_native",
+            "Close in afternoon open breaks above morning session high (bullish afternoon open breakout)",
+            "Close in afternoon open breaks below morning session low (bearish afternoon open breakdown)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mom_definitions, start=1):
         register_signal(
@@ -791,7 +798,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 3. VOLATILITY SIGNALS (42 signals)
+    # 3. VOLATILITY SIGNALS (44 signals)
     # -------------------------------------------------------------------------
     vol_definitions = [
         (
@@ -1088,6 +1095,20 @@ def _initialize_default_catalog() -> None:
             "Close > Open + 0.5 * Range(5)",
             "Close < Open - 0.5 * Range(5)",
         ),
+        (
+            "vol_ib_breakout_30m_signal",
+            "VN30F1M 5m Initial Balance (first 6 bars, 08:45-09:15) breakout or trap reversal",
+            "signalx_native",
+            "Close breaks above IB High and sustains (momentum breakout)",
+            "Close breaks below IB Low and sustains, or false breakout reversal (trap)",
+        ),
+        (
+            "vol_pre_atc_squeeze_signal",
+            "VN30F1M 5m Pre-ATC session (14:00-14:25) volatility squeeze and breakout",
+            "signalx_native",
+            "Bollinger Band width below 20th percentile then expands with bullish candle (pre-ATC squeeze breakout long)",
+            "Bollinger Band width below 20th percentile then expands with bearish candle (pre-ATC squeeze breakout short)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_definitions, start=1):
         register_signal(
@@ -1101,7 +1122,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 4. VOLUME SIGNALS (12 signals)
+    # 4. VOLUME SIGNALS (32 signals)
     # -------------------------------------------------------------------------
     vol_flow_definitions = [
         (
@@ -1300,6 +1321,34 @@ def _initialize_default_catalog() -> None:
             "Volume-Weighted RSI 14 crosses above 30 from oversold",
             "Volume-Weighted RSI 14 crosses below 70 from overbought",
         ),
+        (
+            "volume_session_vwap_cross_signal",
+            "VN30F1M 5m cumulative session VWAP crossover signal",
+            "signalx_native",
+            "Close crosses above intraday session VWAP (bullish bias shift)",
+            "Close crosses below intraday session VWAP (bearish bias shift)",
+        ),
+        (
+            "volume_rvol_time_bucket_signal",
+            "VN30F1M 5m Relative Volume normalized by time-of-day bucket (RVOL >= 2.0 threshold)",
+            "signalx_native",
+            "RVOL >= 2.0 and green candle (bullish high-volume surge in time bucket)",
+            "RVOL >= 2.0 and red candle (bearish high-volume surge in time bucket)",
+        ),
+        (
+            "volume_cvd_divergence_signal",
+            "VN30F1M 5m Cumulative Volume Delta (CVD) intraday proxy divergence vs price extremes (10 bars)",
+            "signalx_native",
+            "CVD makes higher low while price makes lower low (bullish CVD divergence)",
+            "CVD makes lower high while price makes higher high (bearish CVD divergence)",
+        ),
+        (
+            "volume_stopping_climax_signal",
+            "VN30F1M 5m stopping volume climax (Volume >= 2.5x SMA20, wick >= 40% range, absorption close)",
+            "signalx_native",
+            "Volume climax with long lower wick and close in upper half (bullish absorption)",
+            "Volume climax with long upper wick and close in lower half (bearish absorption)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_flow_definitions, start=1):
         register_signal(
@@ -1313,7 +1362,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 5. CANDLESTICK SIGNALS (14 signals)
+    # 5. CANDLESTICK SIGNALS (38 signals)
     # -------------------------------------------------------------------------
     cdl_definitions = [
         (
@@ -1575,6 +1624,13 @@ def _initialize_default_catalog() -> None:
             "Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar",
             "Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar",
         ),
+        (
+            "cdl_pdh_pdl_sweep_signal",
+            "VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside)",
+            "signalx_native",
+            "Price wicks below PDL then closes above it (bullish PDL sweep reversal)",
+            "Price wicks above PDH then closes below it (bearish PDH sweep reversal)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(cdl_definitions, start=1):
         register_signal(
@@ -1744,7 +1800,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 7. COMPOSITE SIGNALS (8 signals)
+    # 7. COMPOSITE SIGNALS (13 signals)
     # -------------------------------------------------------------------------
     comp_definitions = [
         (
@@ -1830,6 +1886,13 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             ">=30% of all active signals vote BUY and buy votes exceed sell votes",
             ">=30% of all active signals vote SELL and sell votes exceed buy votes",
+        ),
+        (
+            "comp_vn30_intraday_confluence_signal",
+            "VN30F1M 5m intraday confluence: session VWAP bearing + RVOL surge + session open momentum alignment",
+            "signalx_native",
+            "Price above session VWAP, RVOL surge bullish, and session open breakout aligned bullish",
+            "Price below session VWAP, RVOL surge bearish, and session open breakout aligned bearish",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(comp_definitions, start=1):
