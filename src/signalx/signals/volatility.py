@@ -6,6 +6,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 VOLATILITY_SIGNAL_COLUMNS = [
@@ -51,6 +52,8 @@ VOLATILITY_SIGNAL_COLUMNS = [
     "vol_mass_index_reversal_bulge_signal",
     "vol_normalized_atr_stretch_signal",
     "vol_dual_thrust_range_breakout_signal",
+    "vol_ib_breakout_30m_signal",
+    "vol_pre_atc_squeeze_signal",
 ]
 
 
@@ -1042,8 +1045,155 @@ def _calc_dual_thrust(
     )
 
 
+def _calc_ib_breakout_30m(
+    df: pd.DataFrame,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    open_p: pd.Series | None = None,
+) -> pd.Series:
+    """Calculate Initial Balance (IB 30m) Breakout & False Breakout (IB Trap).
+
+    For bars t < 6: signal is NONE.
+    For bar >= 6:
+      - breakout up (Close > IB_High & prev Close <= prev IB_High) -> BUY
+      - breakout down (Close < IB_Low & prev Close >= prev IB_Low) -> SELL
+      - IB Bear Trap (Low < IB_Low & Close > IB_Low & Close > Open) -> BUY
+      - IB Bull Trap (High > IB_High & Close < IB_High & Close < Open) -> SELL
+      - trend hold (Close > IB_High or Close < IB_Low) -> HOLD
+      - otherwise -> NONE
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    if open_p is None:
+        open_p = df["open"] if "open" in df else close
+
+    ctx = extract_session_context(df)
+
+    # Initial Balance High/Low established on bars 0..5
+    ib_mask = ctx.bar_in_session < 6
+    ib_high_sub = high.where(ib_mask)
+    ib_low_sub = low.where(ib_mask)
+
+    ib_high = ib_high_sub.groupby(ctx.session_id, sort=False).transform("max")
+    ib_low = ib_low_sub.groupby(ctx.session_id, sort=False).transform("min")
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    ibh = ib_high.to_numpy(dtype=float, na_value=np.nan)
+    ibl = ib_low.to_numpy(dtype=float, na_value=np.nan)
+
+    # prev Close within the session
+    close_prev = close.groupby(ctx.session_id, sort=False).shift(1)
+    c_prev = close_prev.to_numpy(dtype=float, na_value=np.nan)
+
+    is_bar_ge_6 = (ctx.bar_in_session >= 6).to_numpy(dtype=bool)
+
+    valid = (
+        is_bar_ge_6
+        & ~np.isnan(c)
+        & ~np.isnan(c_prev)
+        & ~np.isnan(o)
+        & ~np.isnan(h)
+        & ~np.isnan(lo)
+        & ~np.isnan(ibh)
+        & ~np.isnan(ibl)
+    )
+
+    breakout_up = valid & (c > ibh) & (c_prev <= ibh)
+    breakout_down = valid & (c < ibl) & (c_prev >= ibl)
+    bear_trap = valid & (lo < ibl) & (c > ibl) & (c > o)
+    bull_trap = valid & (h > ibh) & (c < ibh) & (c < o)
+
+    buy = breakout_up | bear_trap
+    sell = breakout_down | bull_trap
+    hold = valid & ~buy & ~sell & ((c > ibh) | (c < ibl))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_pre_atc_squeeze(
+    df: pd.DataFrame,
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+) -> pd.Series:
+    """Calculate Pre-ATC Power Hour (14:00 - 14:25) Squeeze & Volatility Expansion.
+
+    In pre-ATC window, range > 1.3 * ATR20.
+    Bullish breakout (Close > prev High & Close > Open) -> BUY
+    Bearish breakdown (Close < prev Low & Close < Open) -> SELL
+    Otherwise -> NONE
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    ctx = extract_session_context(df)
+
+    try:
+        atr20 = ta.volatility.AverageTrueRange(
+            high=high, low=low, close=close, window=20, fillna=False
+        ).average_true_range()
+        if atr20.isna().all():
+            atr20 = (high - low).rolling(20, min_periods=1).mean()
+        else:
+            atr20 = atr20.bfill().fillna((high - low).rolling(20, min_periods=1).mean())
+    except Exception:
+        atr20 = (high - low).rolling(20, min_periods=1).mean()
+
+    # Pre-ATC mask
+    is_pre_atc = ctx.is_pre_atc.to_numpy(dtype=bool)
+
+    # prev High and Low within session
+    prev_h = (
+        high.groupby(ctx.session_id, sort=False).shift(1).to_numpy(dtype=float, na_value=np.nan)
+    )
+    prev_l = low.groupby(ctx.session_id, sort=False).shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    atr = atr20.to_numpy(dtype=float, na_value=np.nan)
+
+    rng = h - lo
+
+    valid = (
+        is_pre_atc
+        & ~np.isnan(c)
+        & ~np.isnan(o)
+        & ~np.isnan(h)
+        & ~np.isnan(lo)
+        & ~np.isnan(atr)
+        & ~np.isnan(prev_h)
+        & ~np.isnan(prev_l)
+    )
+
+    is_expanded = valid & (rng > 1.3 * atr)
+    buy = is_expanded & (c > prev_h) & (c > o)
+    sell = is_expanded & (c < prev_l) & (c < o)
+
+    condlist = [buy, sell]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 42 volatility, channel, and band signals from OHLCV dataframe.
+    """Generate all 44 volatility, channel, and band signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -1055,7 +1205,7 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 42 columns ending with '_signal', with values in
+        DataFrame containing 44 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1373,6 +1523,18 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
         # 34. Dual Thrust Range Breakout (1)
         signals["vol_dual_thrust_range_breakout_signal"] = _calc_dual_thrust(
             open_p, high, low, close, length=5, k=0.5
+        )
+        pbar.update(1)
+
+        # 35. Initial Balance (IB 30m) Breakout & Trap (1)
+        signals["vol_ib_breakout_30m_signal"] = _calc_ib_breakout_30m(
+            df_norm, high, low, close, open_p
+        )
+        pbar.update(1)
+
+        # 36. Pre-ATC Power Hour Squeeze & Expansion (1)
+        signals["vol_pre_atc_squeeze_signal"] = _calc_pre_atc_squeeze(
+            df_norm, open_p, high, low, close
         )
         pbar.update(1)
 

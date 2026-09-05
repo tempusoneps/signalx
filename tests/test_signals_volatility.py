@@ -15,11 +15,13 @@ from signalx.signals.volatility import (
     _calc_dual_thrust,
     _calc_garman_klass,
     _calc_hv_ratio_breakout,
+    _calc_ib_breakout_30m,
     _calc_keltner_width_squeeze,
     _calc_mass_index_reversal,
     _calc_natr_stretch,
     _calc_parkinson_surge,
     _calc_pct_b_reversal,
+    _calc_pre_atc_squeeze,
     _calc_rvi_ob_os,
     _calc_squeeze_momentum_pro,
     _calc_ttm_squeeze,
@@ -56,20 +58,23 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLATILITY_SIGNALS = VOLATILITY_SIGNAL_COLUMNS
 
 
-def test_volatility_signals_all_42_columns_present():
-    """Verify generate_volatility_signals produces exactly 42 volatility signals."""
+def test_volatility_signals_all_44_columns_present():
+    """Verify generate_volatility_signals produces exactly 44 volatility signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volatility_signals(df)
 
-    assert len(EXPECTED_VOLATILITY_SIGNALS) == 42
+    assert len(EXPECTED_VOLATILITY_SIGNALS) == 44
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 42
+    assert len(res.columns) == 44
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLATILITY_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+
+    assert "vol_ib_breakout_30m_signal" in res.columns
+    assert "vol_pre_atc_squeeze_signal" in res.columns
 
 
 def test_volatility_signals_all_states_valid():
@@ -107,7 +112,7 @@ def test_volatility_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 42
+    assert len(res.columns) == 44
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -122,7 +127,7 @@ def test_volatility_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 42
+    assert len(res.columns) == 44
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -142,7 +147,7 @@ def test_volatility_signals_normalization():
     res = generate_volatility_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 42
+    assert len(res.columns) == 44
 
 
 def test_volatility_signals_missing_columns():
@@ -404,3 +409,226 @@ def test_dual_thrust_direct():
     assert isinstance(res, pd.Series)
     assert res.iloc[-2] == SignalState.BUY
     assert res.iloc[-1] == SignalState.SELL
+
+
+def test_ib_breakout_30m_direct():
+    """Verify IB 30m breakout, traps, and trend hold."""
+    # Build a 15-bar session (synthetic fallback: session_id = 0, bar_in_session = 0..14)
+    # Bars 0..5 establish IB High=105.0, IB Low=95.0
+    n = 15
+    open_p = [100.0] * n
+    high = [104.0] * n
+    low = [96.0] * n
+    close = [100.0] * n
+
+    high[2] = 105.0  # IB_High = 105.0
+    low[3] = 95.0  # IB_Low = 95.0
+
+    # Bar 6: breakout up (Close > IB_High & prev Close <= prev IB_High) -> BUY
+    # prev Close (bar 5) is 100.0 <= 105.0
+    open_p[6] = 104.0
+    high[6] = 108.0
+    low[6] = 103.0
+    close[6] = 106.0
+
+    # Bar 7: trend hold (Close > IB_High & prev Close > IB_High) -> HOLD
+    open_p[7] = 106.0
+    high[7] = 109.0
+    low[7] = 105.5
+    close[7] = 107.0
+
+    # Bar 8: inside IB -> NONE
+    open_p[8] = 105.0
+    high[8] = 105.0
+    low[8] = 96.0
+    close[8] = 100.0
+
+    # Bar 9: breakout down (Close < IB_Low & prev Close >= prev IB_Low) -> SELL
+    # prev Close (bar 8) is 100.0 >= 95.0
+    open_p[9] = 96.0
+    high[9] = 96.0
+    low[9] = 93.0
+    close[9] = 94.0
+
+    # Bar 10: IB Bear Trap (Low < IB_Low & Close > IB_Low & Close > Open) -> BUY
+    open_p[10] = 94.0
+    low[10] = 93.0
+    high[10] = 97.0
+    close[10] = 96.0
+
+    # Bar 11: IB Bull Trap (High > IB_High & Close < IB_High & Close < Open) -> SELL
+    open_p[11] = 106.0
+    high[11] = 107.0
+    low[11] = 103.0
+    close[11] = 104.0
+
+    # Bar 12: breakout down below IB_Low after re-entering IB (Close < IB_Low & prev Close >= prev IB_Low) -> SELL
+    open_p[12] = 94.0
+    high[12] = 94.5
+    low[12] = 92.0
+    close[12] = 93.0
+
+    # Bar 13: trend hold below IB_Low (Close < IB_Low & prev Close < IB_Low) -> HOLD
+    open_p[13] = 93.0
+    high[13] = 93.5
+    low[13] = 91.0
+    close[13] = 92.0
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": [1000.0] * n,
+        }
+    )
+
+    sig = _calc_ib_breakout_30m(
+        df,
+        high=pd.Series(high),
+        low=pd.Series(low),
+        close=pd.Series(close),
+        open_p=pd.Series(open_p),
+    )
+
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+    # First 6 bars (0..5) must strictly be NONE
+    for i in range(6):
+        assert sig.iloc[i] == SignalState.NONE, f"Bar {i} should be NONE"
+
+    assert sig.iloc[6] == SignalState.BUY, f"Bar 6 breakout up should be BUY, got {sig.iloc[6]}"
+    assert sig.iloc[7] == SignalState.HOLD, f"Bar 7 trend hold should be HOLD, got {sig.iloc[7]}"
+    assert sig.iloc[8] == SignalState.NONE, f"Bar 8 inside IB should be NONE, got {sig.iloc[8]}"
+    assert sig.iloc[9] == SignalState.SELL, f"Bar 9 breakout down should be SELL, got {sig.iloc[9]}"
+    assert sig.iloc[10] == SignalState.BUY, f"Bar 10 bear trap should be BUY, got {sig.iloc[10]}"
+    assert sig.iloc[11] == SignalState.SELL, f"Bar 11 bull trap should be SELL, got {sig.iloc[11]}"
+    assert sig.iloc[12] == SignalState.SELL, (
+        f"Bar 12 breakout down should be SELL, got {sig.iloc[12]}"
+    )
+    assert sig.iloc[13] == SignalState.HOLD, (
+        f"Bar 13 trend hold down should be HOLD, got {sig.iloc[13]}"
+    )
+
+
+def test_pre_atc_squeeze_direct():
+    """Verify pre-ATC squeeze signal triggers within pre-ATC window when range > 1.3 * ATR20."""
+    # In synthetic fallback, bars 44..48 are is_pre_atc
+    n = 50
+    open_p = [100.0] * n
+    high = [101.0] * n
+    low = [99.0] * n
+    close = [100.0] * n
+    # Normal bar range is 2.0, so ATR20 ~ 2.0. Threshold 1.3 * ATR20 ~ 2.6.
+
+    # Bar 43: outside pre-ATC window, even with expansion -> NONE
+    open_p[43] = 100.0
+    high[43] = 108.0
+    low[43] = 99.0
+    close[43] = 107.0
+
+    # Bar 44: is_pre_atc, bullish breakout (Close > prev High & Close > Open) -> BUY
+    # prev High (bar 43) = 108.0; range = 115 - 99 = 16.0 > 1.3 * ATR20
+    open_p[44] = 105.0
+    low[44] = 99.0
+    high[44] = 115.0
+    close[44] = 112.0  # > 108.0 (prev High) and > 105.0 (Open)
+
+    # Bar 45: is_pre_atc, bearish breakdown (Close < prev Low & Close < Open) -> SELL
+    # prev Low (bar 44) = 99.0; range = 100 - 88 = 12.0 > 1.3 * ATR20
+    open_p[45] = 98.0
+    high[45] = 100.0
+    low[45] = 88.0
+    close[45] = 90.0  # < 99.0 (prev Low) and < 98.0 (Open)
+
+    # Bar 46: is_pre_atc, small range (< 1.3 * ATR20) -> NONE
+    open_p[46] = 90.0
+    high[46] = 91.0
+    low[46] = 89.5
+    close[46] = 90.5
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": [1000.0] * n,
+        }
+    )
+
+    sig = _calc_pre_atc_squeeze(
+        df,
+        open_p=pd.Series(open_p),
+        high=pd.Series(high),
+        low=pd.Series(low),
+        close=pd.Series(close),
+    )
+
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+    assert sig.iloc[43] == SignalState.NONE, (
+        f"Bar 43 outside pre-ATC should be NONE, got {sig.iloc[43]}"
+    )
+    assert sig.iloc[44] == SignalState.BUY, (
+        f"Bar 44 pre-ATC breakout up should be BUY, got {sig.iloc[44]}"
+    )
+    assert sig.iloc[45] == SignalState.SELL, (
+        f"Bar 45 pre-ATC breakdown should be SELL, got {sig.iloc[45]}"
+    )
+    assert sig.iloc[46] == SignalState.NONE, (
+        f"Bar 46 pre-ATC small range should be NONE, got {sig.iloc[46]}"
+    )
+    assert sig.iloc[49] == SignalState.NONE, (
+        f"Bar 49 outside pre-ATC should be NONE, got {sig.iloc[49]}"
+    )
+
+
+def test_volatility_signals_intraday_datetime_context():
+    """Verify IB breakout and Pre-ATC squeeze work seamlessly with real intraday DatetimeIndex."""
+    # Generate 2 trading days of 5m bars from 08:45 to 14:45
+    dates = []
+    for day in ["2026-01-05", "2026-01-06"]:
+        morning = pd.date_range(f"{day} 08:45", f"{day} 11:30", freq="5min")
+        afternoon = pd.date_range(f"{day} 13:00", f"{day} 14:45", freq="5min")
+        dates.extend(morning)
+        dates.extend(afternoon)
+    dt_idx = pd.DatetimeIndex(dates)
+    n = len(dt_idx)
+
+    np.random.seed(123)
+    close = 100.0 + np.cumsum(np.random.randn(n) * 0.5)
+    high = close + np.random.uniform(0.5, 2.0, n)
+    low = close - np.random.uniform(0.5, 2.0, n)
+    open_p = low + (high - low) * 0.5
+    volume = np.random.randint(1000, 10000, n).astype(float)
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "datetime": dt_idx,
+        },
+        index=dt_idx,
+    )
+
+    res = generate_volatility_signals(df)
+    assert len(res.columns) == 44
+    assert "vol_ib_breakout_30m_signal" in res.columns
+    assert "vol_pre_atc_squeeze_signal" in res.columns
+
+    ib_sig = res["vol_ib_breakout_30m_signal"]
+    pre_atc_sig = res["vol_pre_atc_squeeze_signal"]
+
+    assert set(ib_sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert set(pre_atc_sig.unique()).issubset(ALL_SIGNAL_STATES)
+    # First 6 bars of first day must be NONE
+    assert (ib_sig.iloc[:6] == SignalState.NONE).all()
