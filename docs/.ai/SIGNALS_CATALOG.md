@@ -1,21 +1,21 @@
-# SignalX Signals Catalog (230 Signals)
+# SignalX Signals Catalog (239 Signals)
 
-`signalx` provides 230 standardized trading signals partitioned across 7 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 239 standardized trading signals partitioned across 7 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
 | Category | Count | Primary Focus |
 | :--- | :--- | :--- |
-| **Candlestick** | 37 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
-| **Composite** | 12 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
-| **Momentum** | 38 | Oscillators, overbought/oversold boundaries, and speed of price change |
+| **Candlestick** | 38 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
+| **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
+| **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
 | **Trend** | 53 | Directional trend following, moving average crossovers, MACD, and regime tracking |
-| **Volatility** | 42 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
-| **Volume** | 28 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **230** | **Full Quantitative Feature Suite** |
+| **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
+| **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
+| **Total** | **239** | **Full Quantitative Feature Suite** |
 
-## Candlestick Signals (37 Signals)
+## Candlestick Signals (38 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -56,8 +56,9 @@
 | `CDL035_signal` | `cdl_thrust_bar_signal` | Thrust Bar (Body >= 75% range and >= 1.8x SMA20 body) | `signalx_native` | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close > Open (Bullish thrust) | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close < Open (Bearish thrust) |
 | `CDL036_signal` | `cdl_narrow_range_7_breakout_signal` | Narrow Range 7 (NR7) volatility compression breakout | `signalx_native` | Close breaks above High of NR7 bar (Bullish NR7 breakout) | Close breaks below Low of NR7 bar (Bearish NR7 breakdown) |
 | `CDL037_signal` | `cdl_wide_range_reversal_signal` | Wide Range Reversal (Range >= 2.5x SMA20 range with extreme close) | `signalx_native` | Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar | Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar |
+| `CDL038_signal` | `cdl_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
 
-## Composite Signals (12 Signals)
+## Composite Signals (13 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -73,8 +74,9 @@
 | `CMP010_signal` | `comp_triple_screen_trading_system_signal` | Alexander Elder Triple Screen Trading System | `signalx_native` | EMA50 rising (Screen 1) + RSI/Stoch oversold pullback (Screen 2) + Close > prev High (Screen 3) | EMA50 falling (Screen 1) + RSI/Stoch overbought pullback (Screen 2) + Close < prev Low (Screen 3) |
 | `CMP011_signal` | `comp_squeeze_momentum_volume_surge_signal` | Squeeze Momentum Breakout with Volume Surge | `signalx_native` | Bullish Squeeze Pro breakout release with Volume >= 1.5x SMA20(Volume) | Bearish Squeeze Pro breakdown release with Volume >= 1.5x SMA20(Volume) |
 | `CMP012_signal` | `comp_master_ensemble_v2_signal` | Master Ensemble v2: Advanced weighted consensus across all library signals (>=30% threshold) | `signalx_native` | >=30% of all active signals vote BUY and buy votes exceed sell votes | >=30% of all active signals vote SELL and sell votes exceed buy votes |
+| `CMP013_signal` | `comp_vn30_intraday_confluence_signal` | VN30F1M 5m intraday confluence: session VWAP bearing + RVOL surge + session open momentum alignment | `signalx_native` | Price above session VWAP, RVOL surge bullish, and session open breakout aligned bullish | Price below session VWAP, RVOL surge bearish, and session open breakout aligned bearish |
 
-## Momentum Signals (38 Signals)
+## Momentum Signals (39 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -116,6 +118,7 @@
 | `MOM036_signal` | `mom_cmo_divergence_signal` | Chande Momentum Oscillator (CMO 14) 5-bar regular divergence | `signalx_native` | Low < Low[5] while CMO > CMO[5] (Bullish CMO divergence) | High > High[5] while CMO < CMO[5] (Bearish CMO divergence) |
 | `MOM037_signal` | `mom_kst_oscillator_cross_signal` | Know Sure Thing (KST) oscillator and 9-SMA signal line crossover | `ta` | KST line crosses above 9-SMA signal line | KST line crosses below 9-SMA signal line |
 | `MOM038_signal` | `mom_demarker_indicator_cross_signal` | Tom DeMarker Indicator (DeM 14) 0.30/0.70 threshold crossover | `signalx_native` | DeMarker 14 crosses above 0.30 from oversold zone | DeMarker 14 crosses below 0.70 from overbought zone |
+| `MOM039_signal` | `mom_afternoon_open_breakout_signal` | VN30F1M 5m afternoon session open (13:00-13:30) momentum breakout above/below morning range | `signalx_native` | Close in afternoon open breaks above morning session high (bullish afternoon open breakout) | Close in afternoon open breaks below morning session low (bearish afternoon open breakdown) |
 
 ## Statistical Signals (20 Signals)
 
@@ -200,7 +203,7 @@
 | `TRD052_signal` | `trend_alma_cross_9_signal` | Arnaud Legoux Moving Average (ALMA 9, offset 0.85, sigma 6) price crossover | `pandas_ta` | Close crosses above ALMA 9 | Close crosses below ALMA 9 |
 | `TRD053_signal` | `trend_zero_lag_ema_cross_21_signal` | Zero-Lag EMA (ZLEMA 21) price crossover | `signalx_native` | Close crosses above ZLEMA 21 | Close crosses below ZLEMA 21 |
 
-## Volatility Signals (42 Signals)
+## Volatility Signals (44 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -246,8 +249,10 @@
 | `VOL040_signal` | `vol_mass_index_reversal_bulge_signal` | Mass Index (25 period) reversal bulge (>27.0 then <26.5) | `signalx_native` | Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) rising | Mass Index drops below 26.5 after bulge > 27.0 with EMA9(Close) falling |
 | `VOL041_signal` | `vol_normalized_atr_stretch_signal` | Normalized ATR (NATR = ATR(14)/Close * 100) extreme expansion >= 2.0x SMA20 | `signalx_native` | NATR >= 2.0 * SMA20(NATR) and Close > Open | NATR >= 2.0 * SMA20(NATR) and Close < Open |
 | `VOL042_signal` | `vol_dual_thrust_range_breakout_signal` | Dual Thrust 5-period range breakout | `signalx_native` | Close > Open + 0.5 * Range(5) | Close < Open - 0.5 * Range(5) |
+| `VOL043_signal` | `vol_ib_breakout_30m_signal` | VN30F1M 5m Initial Balance (first 6 bars, 08:45-09:15) breakout or trap reversal | `signalx_native` | Close breaks above IB High and sustains (momentum breakout) | Close breaks below IB Low and sustains, or false breakout reversal (trap) |
+| `VOL044_signal` | `vol_pre_atc_squeeze_signal` | VN30F1M 5m Pre-ATC session (14:00-14:25) volatility squeeze and breakout | `signalx_native` | Bollinger Band width below 20th percentile then expands with bullish candle (pre-ATC squeeze breakout long) | Bollinger Band width below 20th percentile then expands with bearish candle (pre-ATC squeeze breakout short) |
 
-## Volume Signals (28 Signals)
+## Volume Signals (32 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -279,3 +284,7 @@
 | `VLM026_signal` | `volume_delta_proxy_surge_signal` | Intrabar Delta Volume Proxy aggressive directional surge | `signalx_native` | Delta Buy Volume > 70% total volume and Close > Open | Delta Sell Volume > 70% total volume and Close < Open |
 | `VLM027_signal` | `volume_vwma_sma_divergence_signal` | VWMA(20) vs SMA(20) Divergence (volume-weighted accumulation/distribution) | `signalx_native` | VWMA(20) > SMA(20) * 1.005 (Accumulation premium) | VWMA(20) < SMA(20) * 0.995 (Distribution discount) |
 | `VLM028_signal` | `volume_volume_weighted_rsi_14_signal` | Volume-Weighted RSI (14 period) overbought/oversold threshold crossover | `signalx_native` | Volume-Weighted RSI 14 crosses above 30 from oversold | Volume-Weighted RSI 14 crosses below 70 from overbought |
+| `VLM029_signal` | `volume_session_vwap_cross_signal` | VN30F1M 5m cumulative session VWAP crossover signal | `signalx_native` | Close crosses above intraday session VWAP (bullish bias shift) | Close crosses below intraday session VWAP (bearish bias shift) |
+| `VLM030_signal` | `volume_rvol_time_bucket_signal` | VN30F1M 5m Relative Volume normalized by time-of-day bucket (RVOL >= 2.0 threshold) | `signalx_native` | RVOL >= 2.0 and green candle (bullish high-volume surge in time bucket) | RVOL >= 2.0 and red candle (bearish high-volume surge in time bucket) |
+| `VLM031_signal` | `volume_cvd_divergence_signal` | VN30F1M 5m Cumulative Volume Delta (CVD) intraday proxy divergence vs price extremes (10 bars) | `signalx_native` | CVD makes higher low while price makes lower low (bullish CVD divergence) | CVD makes lower high while price makes higher high (bearish CVD divergence) |
+| `VLM032_signal` | `volume_stopping_climax_signal` | VN30F1M 5m stopping volume climax (Volume >= 2.5x SMA20, wick >= 40% range, absorption close) | `signalx_native` | Volume climax with long lower wick and close in upper half (bullish absorption) | Volume climax with long upper wick and close in lower half (bearish absorption) |
