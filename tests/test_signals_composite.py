@@ -494,13 +494,17 @@ def test_vn30_intraday_confluence_direct():
             "volume": [1000.0] * n,
         }
     )
-    # Row 5: Bullish via IB breakout + volume surge
+    # Row 5: Bullish via IB breakout + volume surge (price above VWAP)
+    df.loc[5, "close"] = 103.0
     df.loc[5, "volume"] = 5000.0
-    # Row 6: Bullish via PDL sweep + VWAP HOLD + volume surge
+    # Row 6: Bullish via PDL sweep + VWAP HOLD + volume surge (price above VWAP)
+    df.loc[6, "close"] = 103.0
     df.loc[6, "volume"] = 5000.0
-    # Row 7: Bearish via IB breakdown + volume surge
+    # Row 7: Bearish via IB breakdown + volume surge (price below VWAP)
+    df.loc[7, "close"] = 98.0
     df.loc[7, "volume"] = 5000.0
-    # Row 8: Bearish via PDH sweep + VWAP HOLD + volume surge
+    # Row 8: Bearish via PDH sweep + VWAP SELL + volume surge (price below VWAP)
+    df.loc[8, "close"] = 98.0
     df.loc[8, "volume"] = 5000.0
     # Row 9: IB breakout but volume not confirmed (volume = 100.0 while rolling mean > 1000)
     df.loc[9, "volume"] = 100.0
@@ -516,7 +520,7 @@ def test_vn30_intraday_confluence_direct():
                 SignalState.BUY,
                 SignalState.HOLD,
                 SignalState.SELL,
-                SignalState.HOLD,
+                SignalState.SELL,
                 SignalState.BUY,
             ],
             "vol_ib_breakout_30m_signal": [
@@ -576,6 +580,29 @@ def test_vn30_intraday_confluence_direct():
     # Test missing intermediate columns fallback (returns all NONE)
     sig_empty_intermediate = _calc_vn30_intraday_confluence(df_coded, pd.DataFrame())
     assert (sig_empty_intermediate == SignalState.NONE).all()
+
+    # Test series index alignment in _get_series
+    df_idx = pd.DataFrame(
+        {
+            "open": [100.0] * 6,
+            "high": [105.0] * 6,
+            "low": [95.0] * 6,
+            "close": [103.0] * 6,
+            "volume": [100.0] * 5 + [5000.0],
+        },
+        index=[10, 20, 30, 40, 50, 60],
+    )
+    inter_idx = pd.DataFrame(
+        {
+            "volume_session_vwap_cross_signal": [SignalState.BUY],
+            "vol_ib_breakout_30m_signal": [SignalState.BUY],
+            "cdl_pdh_pdl_sweep_signal": [SignalState.NONE],
+        },
+        index=[60],
+    )
+    sig_reindexed = _calc_vn30_intraday_confluence(df_idx, inter_idx)
+    assert sig_reindexed.loc[10] == SignalState.NONE
+    assert sig_reindexed.loc[60] == SignalState.BUY
 
 
 def test_composite_helpers_edge_cases():

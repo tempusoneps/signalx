@@ -4,6 +4,7 @@ import pandas as pd
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 COMPOSITE_SIGNAL_COLUMNS = [
@@ -642,9 +643,19 @@ def _calc_vn30_intraday_confluence(
     def _get_series(semantic_col: str, code_col: str) -> pd.Series:
         if intermediate is not None and not intermediate.empty:
             if semantic_col in intermediate.columns:
-                return intermediate[semantic_col].fillna(SignalState.NONE).astype(str)
+                return (
+                    intermediate[semantic_col]
+                    .reindex(df.index, fill_value=SignalState.NONE)
+                    .fillna(SignalState.NONE)
+                    .astype(str)
+                )
             if code_col in intermediate.columns:
-                return intermediate[code_col].fillna(SignalState.NONE).astype(str)
+                return (
+                    intermediate[code_col]
+                    .reindex(df.index, fill_value=SignalState.NONE)
+                    .fillna(SignalState.NONE)
+                    .astype(str)
+                )
         return pd.Series(SignalState.NONE, index=df.index, dtype=str)
 
     vwap_sig = _get_series("volume_session_vwap_cross_signal", "VLM029_signal")
@@ -661,8 +672,22 @@ def _calc_vn30_intraday_confluence(
     vol_ma = vol.rolling(20, min_periods=5).mean()
     vol_confirmed = (vol > vol_ma).fillna(False)
 
-    vwap_bull = vwap_sig.isin([SignalState.BUY, SignalState.HOLD])
-    vwap_bear = vwap_sig.isin([SignalState.SELL, SignalState.HOLD])
+    ctx = extract_session_context(df)
+    high = df["high"] if "high" in df.columns else df.get("HIGH", pd.Series(0.0, index=df.index))
+    low = df["low"] if "low" in df.columns else df.get("LOW", pd.Series(0.0, index=df.index))
+    close = (
+        df["close"] if "close" in df.columns else df.get("CLOSE", pd.Series(0.0, index=df.index))
+    )
+
+    tp = (high + low + close) / 3.0
+    cum_pv = (tp * vol).groupby(ctx.session_id, sort=False).cumsum()
+    cum_vol = vol.groupby(ctx.session_id, sort=False).cumsum()
+    session_vwap = (cum_pv / cum_vol.replace(0, np.nan)).fillna(tp)
+
+    # Bullish alignment: price above session VWAP or cross BUY
+    vwap_bull = (close >= session_vwap) | (vwap_sig == SignalState.BUY)
+    # Bearish alignment: price below session VWAP or cross SELL
+    vwap_bear = (close <= session_vwap) | (vwap_sig == SignalState.SELL)
 
     ib_or_sweep_buy = (ib_sig == SignalState.BUY) | (sweep_sig == SignalState.BUY)
     ib_or_sweep_sell = (ib_sig == SignalState.SELL) | (sweep_sig == SignalState.SELL)
