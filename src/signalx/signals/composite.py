@@ -19,6 +19,7 @@ COMPOSITE_SIGNAL_COLUMNS = [
     "comp_triple_screen_trading_system_signal",
     "comp_squeeze_momentum_volume_surge_signal",
     "comp_master_ensemble_v2_signal",
+    "comp_vn30_intraday_confluence_signal",
 ]
 
 
@@ -461,7 +462,7 @@ def generate_composite_signals(
     intermediate_signals: pd.DataFrame | None = None,
     show_progress: bool = False,
 ) -> pd.DataFrame:
-    """Generate all 12 standardized composite and consensus signals.
+    """Generate all 13 standardized composite and consensus signals.
 
     Parameters
     ----------
@@ -477,7 +478,7 @@ def generate_composite_signals(
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 12 columns ending with '_signal', with values in
+        DataFrame containing 13 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -571,6 +572,12 @@ def generate_composite_signals(
         signals["comp_master_ensemble_v2_signal"] = _calc_master_ensemble_v2(intermediate)
         pbar.update(1)
 
+        # 13. VN30 Intraday Master Confluence Signal (1)
+        signals["comp_vn30_intraday_confluence_signal"] = _calc_vn30_intraday_confluence(
+            df_norm, intermediate
+        )
+        pbar.update(1)
+
         # Ensure all columns are present, filled with NONE, and matching index
         for col in COMPOSITE_SIGNAL_COLUMNS:
             if col not in signals.columns:
@@ -616,4 +623,60 @@ def _calc_macd_hist_candle_reversal(df_norm: pd.DataFrame) -> pd.Series:
     choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
     return pd.Series(
         np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
+    )
+
+
+def _calc_vn30_intraday_confluence(
+    df: pd.DataFrame, intermediate: pd.DataFrame | None = None
+) -> pd.Series:
+    """Calculate VN30 Intraday Master Confluence signal.
+
+    Combines Session VWAP alignment, Initial Balance breakout / PDH-PDL sweep,
+    and rolling volume confirmation.
+    """
+    import numpy as np
+
+    if df.empty:
+        return pd.Series(dtype=str, index=df.index)
+
+    def _get_series(semantic_col: str, code_col: str) -> pd.Series:
+        if intermediate is not None and not intermediate.empty:
+            if semantic_col in intermediate.columns:
+                return intermediate[semantic_col].fillna(SignalState.NONE).astype(str)
+            if code_col in intermediate.columns:
+                return intermediate[code_col].fillna(SignalState.NONE).astype(str)
+        return pd.Series(SignalState.NONE, index=df.index, dtype=str)
+
+    vwap_sig = _get_series("volume_session_vwap_cross_signal", "VLM029_signal")
+    ib_sig = _get_series("vol_ib_breakout_30m_signal", "VOL043_signal")
+    sweep_sig = _get_series("cdl_pdh_pdl_sweep_signal", "CDL038_signal")
+
+    if "volume" in df.columns:
+        vol = df["volume"].astype(float)
+    elif "VOLUME" in df.columns:
+        vol = df["VOLUME"].astype(float)
+    else:
+        vol = pd.Series(0.0, index=df.index)
+
+    vol_ma = vol.rolling(20, min_periods=5).mean()
+    vol_confirmed = (vol > vol_ma).fillna(False)
+
+    vwap_bull = vwap_sig.isin([SignalState.BUY, SignalState.HOLD])
+    vwap_bear = vwap_sig.isin([SignalState.SELL, SignalState.HOLD])
+
+    ib_or_sweep_buy = (ib_sig == SignalState.BUY) | (sweep_sig == SignalState.BUY)
+    ib_or_sweep_sell = (ib_sig == SignalState.SELL) | (sweep_sig == SignalState.SELL)
+
+    bull = vwap_bull & ib_or_sweep_buy & vol_confirmed
+    bear = vwap_bear & ib_or_sweep_sell & vol_confirmed
+
+    bull_only = bull & ~bear
+    bear_only = bear & ~bull
+
+    conds = [bull_only, bear_only]
+    choices = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(conds, choices, default=SignalState.NONE),
+        index=df.index,
+        dtype=str,
     )

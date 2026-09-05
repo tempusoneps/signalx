@@ -19,6 +19,7 @@ from signalx.signals.composite import (
     _calc_trend_consensus,
     _calc_trend_momentum_align,
     _calc_triple_screen_trading_system,
+    _calc_vn30_intraday_confluence,
     generate_composite_signals,
 )
 from signalx.signals.momentum import generate_momentum_signals
@@ -74,21 +75,22 @@ def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
 
 
-def test_composite_signals_all_12_columns_present():
-    """Verify generate_composite_signals produces exactly 12 expected composite signals."""
+def test_composite_signals_all_13_columns_present():
+    """Verify generate_composite_signals produces exactly 13 expected composite signals."""
     df = make_synthetic_ohlcv(250)
     intermediate = generate_all_intermediate(df)
     res = generate_composite_signals(df, intermediate)
 
-    assert len(EXPECTED_COMPOSITE_SIGNALS) == 12
+    assert len(EXPECTED_COMPOSITE_SIGNALS) == 13
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 12
+    assert len(res.columns) == 13
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+    assert "comp_vn30_intraday_confluence_signal" in res.columns
 
 
 def test_composite_signals_all_states_valid():
@@ -126,7 +128,7 @@ def test_composite_signals_without_intermediate():
     df = make_synthetic_ohlcv(100)
     res = generate_composite_signals(df, None)
 
-    assert len(res.columns) == 12
+    assert len(res.columns) == 13
     assert len(res) == 100
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns
@@ -141,7 +143,7 @@ def test_composite_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 12
+    assert len(res.columns) == 13
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -157,7 +159,7 @@ def test_composite_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 12
+    assert len(res.columns) == 13
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -171,7 +173,7 @@ def test_composite_signals_normalization():
     res = generate_composite_signals(df_upper, None)
 
     assert len(res) == 50
-    assert len(res.columns) == 12
+    assert len(res.columns) == 13
 
 
 def test_composite_signals_missing_columns():
@@ -480,6 +482,102 @@ def test_master_ensemble_v2_direct():
     assert sig.iloc[3] == SignalState.NONE
 
 
+def test_vn30_intraday_confluence_direct():
+    """Verify VN30 intraday master confluence (Session VWAP + IB/Sweep + Volume)."""
+    n = 10
+    df = pd.DataFrame(
+        {
+            "open": [100.0] * n,
+            "high": [105.0] * n,
+            "low": [95.0] * n,
+            "close": [102.0] * n,
+            "volume": [1000.0] * n,
+        }
+    )
+    # Row 5: Bullish via IB breakout + volume surge
+    df.loc[5, "volume"] = 5000.0
+    # Row 6: Bullish via PDL sweep + VWAP HOLD + volume surge
+    df.loc[6, "volume"] = 5000.0
+    # Row 7: Bearish via IB breakdown + volume surge
+    df.loc[7, "volume"] = 5000.0
+    # Row 8: Bearish via PDH sweep + VWAP HOLD + volume surge
+    df.loc[8, "volume"] = 5000.0
+    # Row 9: IB breakout but volume not confirmed (volume = 100.0 while rolling mean > 1000)
+    df.loc[9, "volume"] = 100.0
+
+    intermediate = pd.DataFrame(
+        {
+            "volume_session_vwap_cross_signal": [
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.BUY,
+                SignalState.HOLD,
+                SignalState.SELL,
+                SignalState.HOLD,
+                SignalState.BUY,
+            ],
+            "vol_ib_breakout_30m_signal": [
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.BUY,
+                SignalState.NONE,
+                SignalState.SELL,
+                SignalState.NONE,
+                SignalState.BUY,
+            ],
+            "cdl_pdh_pdl_sweep_signal": [
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.NONE,
+                SignalState.BUY,
+                SignalState.NONE,
+                SignalState.SELL,
+                SignalState.NONE,
+            ],
+        }
+    )
+
+    sig = _calc_vn30_intraday_confluence(df, intermediate)
+    assert sig.iloc[5] == SignalState.BUY
+    assert sig.iloc[6] == SignalState.BUY
+    assert sig.iloc[7] == SignalState.SELL
+    assert sig.iloc[8] == SignalState.SELL
+    assert sig.iloc[9] == SignalState.NONE
+
+    # Test coded column names fallback (VLM029, VOL043, CDL038)
+    df_coded = pd.DataFrame(
+        {
+            "open": [100.0] * 6,
+            "high": [105.0] * 6,
+            "low": [95.0] * 6,
+            "close": [102.0] * 6,
+            "volume": [100.0] * 5 + [1000.0],
+        }
+    )
+    intermediate_coded = pd.DataFrame(
+        {
+            "VLM029_signal": [SignalState.NONE] * 5 + [SignalState.BUY],
+            "VOL043_signal": [SignalState.NONE] * 5 + [SignalState.BUY],
+            "CDL038_signal": [SignalState.NONE] * 6,
+        }
+    )
+    sig_coded = _calc_vn30_intraday_confluence(df_coded, intermediate_coded)
+    assert sig_coded.iloc[-1] == SignalState.BUY
+
+    # Test missing intermediate columns fallback (returns all NONE)
+    sig_empty_intermediate = _calc_vn30_intraday_confluence(df_coded, pd.DataFrame())
+    assert (sig_empty_intermediate == SignalState.NONE).all()
+
+
 def test_composite_helpers_edge_cases():
     """Verify helper functions handle empty dataframes cleanly."""
     empty_df = pd.DataFrame()
@@ -494,6 +592,7 @@ def test_composite_helpers_edge_cases():
     assert len(_calc_smc_trend_volume_confluence(empty_df, empty_df)) == 0
     assert len(_calc_triple_screen_trading_system(empty_df)) == 0
     assert len(_calc_squeeze_momentum_volume_surge(empty_df, empty_df)) == 0
+    assert len(_calc_vn30_intraday_confluence(empty_df, empty_df)) == 0
 
 
 def test_signals_package_export():
