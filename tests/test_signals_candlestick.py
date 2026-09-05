@@ -24,6 +24,7 @@ from signalx.signals.candlestick import (
     _calc_narrow_range_7_breakout,
     _calc_order_block_retest,
     _calc_outside_bar,
+    _calc_pdh_pdl_sweep,
     _calc_piercing_darkcloud,
     _calc_pinbar,
     _calc_three_soldiers_crows,
@@ -59,21 +60,23 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_CANDLESTICK_SIGNALS = CANDLESTICK_SIGNAL_COLUMNS
 
 
-def test_candlestick_signals_all_37_columns_present():
-    """Verify generate_candlestick_signals produces exactly 37 candlestick signals."""
+def test_candlestick_signals_all_38_columns_present():
+    """Verify generate_candlestick_signals produces exactly 38 candlestick signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_candlestick_signals(df)
 
-    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 37
+    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 38
     assert EXPECTED_CANDLESTICK_SIGNALS == CANDLESTICK_SIGNAL_COLUMNS
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 37
+    assert len(res.columns) == 38
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_CANDLESTICK_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+
+    assert "cdl_pdh_pdl_sweep_signal" in res.columns
 
 
 def test_candlestick_signals_all_states_valid():
@@ -756,6 +759,52 @@ def test_wide_range_reversal_signal_direct():
     assert sig.iloc[21] == SignalState.SELL
 
 
+def test_pdh_pdl_sweep_signal_direct():
+    """Verify Prior Day High / Low (PDH/PDL) liquidity sweep signal logic and zero lookahead bias."""
+    dates = [
+        "2026-09-01 09:00",
+        "2026-09-01 09:05",
+        "2026-09-01 09:10",
+        "2026-09-01 09:15",
+        "2026-09-01 09:20",
+    ] + [
+        "2026-09-02 09:00",
+        "2026-09-02 09:05",
+        "2026-09-02 09:10",
+        "2026-09-02 09:15",
+        "2026-09-02 09:20",
+    ]
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(dates),
+            "open": [94.0, 95.0, 96.0, 97.0, 98.0, 95.0, 91.0, 99.0, 100.0, 89.0],
+            "high": [96.0, 98.0, 100.0, 99.0, 98.0, 97.0, 93.0, 102.0, 103.0, 90.0],
+            "low": [92.0, 90.0, 95.0, 94.0, 93.0, 93.0, 88.0, 97.0, 99.0, 86.0],
+            "close": [95.0, 96.0, 97.0, 98.0, 97.0, 96.0, 92.0, 98.0, 101.0, 87.0],
+            "volume": [1000.0] * 10,
+        }
+    )
+
+    res = generate_candlestick_signals(df)
+    sig = res["cdl_pdh_pdl_sweep_signal"]
+
+    # Session 1 (bars 0..4) has no prior session -> MUST BE ALL NONE (zero lookahead!)
+    for i in range(5):
+        assert sig.iloc[i] == SignalState.NONE, f"Session 1 bar {i} should be NONE"
+
+    # Session 2: PDH is 100.0, PDL is 90.0
+    # Bar 5 (index 5): within range -> NONE
+    assert sig.iloc[5] == SignalState.NONE
+    # Bar 6 (index 6): low 88 < 90, close 92 > 90, close 92 > open 91 -> BUY
+    assert sig.iloc[6] == SignalState.BUY
+    # Bar 7 (index 7): high 102 > 100, close 98 < 100, close 98 < open 99 -> SELL
+    assert sig.iloc[7] == SignalState.SELL
+    # Bar 8 (index 8): high 103 > 100, close 101 > 100 -> NONE
+    assert sig.iloc[8] == SignalState.NONE
+    # Bar 9 (index 9): low 86 < 90, close 87 < 90 -> NONE
+    assert sig.iloc[9] == SignalState.NONE
+
+
 def test_helpers_edge_cases():
     """Verify edge case handling in helper functions."""
     empty_s = pd.Series([], dtype=float)
@@ -809,6 +858,7 @@ def test_helpers_edge_cases():
     assert len(_calc_thrust_bar(empty_s, empty_s, empty_s, empty_s)) == 0
     assert len(_calc_narrow_range_7_breakout(empty_s, empty_s, empty_s)) == 0
     assert len(_calc_wide_range_reversal(empty_s, empty_s, empty_s)) == 0
+    assert len(_calc_pdh_pdl_sweep(None, empty_s, empty_s, empty_s, empty_s)) == 0
 
 
 def test_signals_package_export():
