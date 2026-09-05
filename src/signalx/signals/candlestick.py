@@ -5,6 +5,7 @@ import pandas as pd
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 CANDLESTICK_SIGNAL_COLUMNS = [
@@ -45,6 +46,7 @@ CANDLESTICK_SIGNAL_COLUMNS = [
     "cdl_thrust_bar_signal",
     "cdl_narrow_range_7_breakout_signal",
     "cdl_wide_range_reversal_signal",
+    "cdl_pdh_pdl_sweep_signal",
 ]
 
 
@@ -1254,8 +1256,66 @@ def _calc_wide_range_reversal(high: pd.Series, low: pd.Series, close: pd.Series)
     return pd.Series(res, index=close.index, dtype=str)
 
 
+def _calc_pdh_pdl_sweep(
+    df: pd.DataFrame | None,
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+) -> pd.Series:
+    """Calculate Prior Day High / Low (PDH/PDL) Liquidity Sweep & Mean-Reversion.
+
+    Prior session PDH = max(High of previous session), PDL = min(Low of previous session).
+    Uses session_id strictly with shift(1) across sessions so that for session 0 / warmup
+    there is no prior session (PDH/PDL is NaN, producing SignalState.NONE) -> Zero lookahead bias.
+
+    Bullish sweep (sweeps PDL): (low < pdl) & (close > pdl) & (close > open) -> SignalState.BUY.
+    Bearish sweep (sweeps PDH): (high > pdh) & (close < pdh) & (close < open) -> SignalState.SELL.
+    Otherwise: SignalState.NONE.
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    if df is None:
+        df = pd.DataFrame(
+            {"open": open_p, "high": high, "low": low, "close": close},
+            index=close.index,
+        )
+
+    ctx = extract_session_context(df)
+
+    session_high = high.groupby(ctx.session_id, sort=False).max()
+    session_low = low.groupby(ctx.session_id, sort=False).min()
+
+    prior_high = session_high.shift(1)
+    prior_low = session_low.shift(1)
+
+    pdh = ctx.session_id.map(prior_high).to_numpy(dtype=float, na_value=np.nan)
+    pdl = ctx.session_id.map(prior_low).to_numpy(dtype=float, na_value=np.nan)
+
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(o) & ~np.isnan(h) & ~np.isnan(lo) & ~np.isnan(c) & ~np.isnan(pdh) & ~np.isnan(pdl)
+    )
+
+    buy = valid & (lo < pdl) & (c > pdl) & (c > o)
+    sell = valid & (h > pdh) & (c < pdh) & (c < o)
+
+    condlist = [buy, sell]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 37 candlestick and price action signals from OHLCV dataframe.
+    """Generate all 38 candlestick and price action signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -1267,7 +1327,7 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 37 columns ending with '_signal', with values in
+        DataFrame containing 38 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1446,6 +1506,10 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
 
         # 37. Wide Range Reversal (1)
         signals["cdl_wide_range_reversal_signal"] = _calc_wide_range_reversal(high, low, close)
+        pbar.update(1)
+
+        # 38. Prior Day High / Low Sweep (1)
+        signals["cdl_pdh_pdl_sweep_signal"] = _calc_pdh_pdl_sweep(df_norm, open_p, high, low, close)
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and match index
