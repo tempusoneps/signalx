@@ -6,6 +6,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 VOLUME_SIGNAL_COLUMNS = [
@@ -37,6 +38,10 @@ VOLUME_SIGNAL_COLUMNS = [
     "volume_delta_proxy_surge_signal",
     "volume_vwma_sma_divergence_signal",
     "volume_volume_weighted_rsi_14_signal",
+    "volume_session_vwap_cross_signal",
+    "volume_rvol_time_bucket_signal",
+    "volume_cvd_divergence_signal",
+    "volume_stopping_climax_signal",
 ]
 
 
@@ -624,8 +629,183 @@ def _calc_volume_weighted_rsi(close: pd.Series, volume: pd.Series, length: int =
     )
 
 
+def _calc_session_vwap_cross(
+    df: pd.DataFrame,
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate Cumulative Session VWAP crossover signal."""
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    ctx = extract_session_context(df)
+    tp = (high + low + close) / 3.0
+    pv = tp * volume
+
+    cum_pv = pv.groupby(ctx.session_id, sort=False).cumsum()
+    cum_vol = volume.groupby(ctx.session_id, sort=False).cumsum()
+    session_vwap = (cum_pv / cum_vol.replace(0, np.nan)).fillna(tp)
+
+    sig = _crossover_signal(close, session_vwap)
+    return pd.Series(
+        np.where(ctx.bar_in_session == 0, SignalState.NONE, sig),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_rvol_time_bucket(
+    df: pd.DataFrame,
+    open_p: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate Relative Volume (RVOL) normalized by time-of-day bucket."""
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    ctx = extract_session_context(df)
+    bucket = ctx.time_minutes
+
+    vol_shift = volume.groupby(bucket, sort=False).shift(1)
+    mean_vol = vol_shift.groupby(bucket, sort=False).transform(
+        lambda s: s.rolling(10, min_periods=1).mean()
+    )
+
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+    m_arr = mean_vol.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(v_arr) & ~np.isnan(m_arr) & (m_arr > 0.0) & ~np.isnan(o_arr) & ~np.isnan(c_arr)
+    )
+    rvol = np.where(valid, v_arr / m_arr, 0.0)
+
+    buy = valid & (rvol >= 2.0) & (c_arr > o_arr)
+    sell = valid & (rvol >= 2.0) & (c_arr < o_arr)
+
+    condlist = [buy, sell]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_cvd_divergence(
+    df: pd.DataFrame,
+    open_p: pd.Series,
+    close: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate Intraday Proxy Cumulative Volume Delta (CVD) Price Divergence."""
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    ctx = extract_session_context(df)
+    rng = high - low
+    delta = volume * (2.0 * close - high - low) / (rng + 1e-9)
+    cvd = delta.groupby(ctx.session_id, sort=False).cumsum()
+
+    close_max = close.groupby(ctx.session_id, sort=False).transform(
+        lambda s: s.rolling(10, min_periods=3).max()
+    )
+    close_min = close.groupby(ctx.session_id, sort=False).transform(
+        lambda s: s.rolling(10, min_periods=3).min()
+    )
+    cvd_max = cvd.groupby(ctx.session_id, sort=False).transform(
+        lambda s: s.rolling(10, min_periods=3).max()
+    )
+    cvd_min = cvd.groupby(ctx.session_id, sort=False).transform(
+        lambda s: s.rolling(10, min_periods=3).min()
+    )
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    cvd_arr = cvd.to_numpy(dtype=float, na_value=np.nan)
+    c_max = close_max.to_numpy(dtype=float, na_value=np.nan)
+    c_min = close_min.to_numpy(dtype=float, na_value=np.nan)
+    cvd_max_arr = cvd_max.to_numpy(dtype=float, na_value=np.nan)
+    cvd_min_arr = cvd_min.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(c)
+        & ~np.isnan(o)
+        & ~np.isnan(cvd_arr)
+        & ~np.isnan(c_max)
+        & ~np.isnan(c_min)
+        & ~np.isnan(cvd_max_arr)
+        & ~np.isnan(cvd_min_arr)
+    )
+
+    bear_div = valid & (c >= c_max - 1e-9) & (cvd_arr < cvd_max_arr - 1e-9) & (c < o)
+    bull_div = valid & (c <= c_min + 1e-9) & (cvd_arr > cvd_min_arr + 1e-9) & (c > o)
+
+    condlist = [bull_div, bear_div]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_stopping_climax(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate Stopping Volume / Intraday Climax Exhaustion Bar."""
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    vol_sma = volume.rolling(20, min_periods=5).mean().to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h = high.to_numpy(dtype=float, na_value=np.nan)
+    lo = low.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(v)
+        & ~np.isnan(vol_sma)
+        & ~np.isnan(o)
+        & ~np.isnan(h)
+        & ~np.isnan(lo)
+        & ~np.isnan(c)
+    )
+    rng = h - lo
+    has_range = valid & (rng > 1e-9)
+    is_surge = has_range & (v >= 2.5 * vol_sma)
+
+    lower_wick = np.minimum(o, c) - lo
+    upper_wick = h - np.maximum(o, c)
+
+    buy = is_surge & (lower_wick >= 0.40 * rng) & (c >= lo + 0.30 * rng)
+    sell = is_surge & (upper_wick >= 0.40 * rng) & (c <= h - 0.30 * rng)
+
+    condlist = [
+        buy & (~sell | (lower_wick >= upper_wick)),
+        sell & (~buy | (upper_wick > lower_wick)),
+    ]
+    choicelist = [SignalState.BUY, SignalState.SELL]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 28 volume, flow, and VWAP signals from OHLCV dataframe.
+    """Generate all 32 volume, flow, and VWAP signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -637,7 +817,7 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 28 columns ending with '_signal', with values in
+        DataFrame containing 32 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -822,6 +1002,30 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         # 25. Volume-Weighted RSI 14 (1)
         signals["volume_volume_weighted_rsi_14_signal"] = _calc_volume_weighted_rsi(
             close, volume, length=14
+        )
+        pbar.update(1)
+
+        # 26. Cumulative Session VWAP Cross (1)
+        signals["volume_session_vwap_cross_signal"] = _calc_session_vwap_cross(
+            df_norm, close, high, low, volume
+        )
+        pbar.update(1)
+
+        # 27. Relative Volume by Time Bucket (1)
+        signals["volume_rvol_time_bucket_signal"] = _calc_rvol_time_bucket(
+            df_norm, open_p, close, volume
+        )
+        pbar.update(1)
+
+        # 28. Intraday CVD Price Divergence (1)
+        signals["volume_cvd_divergence_signal"] = _calc_cvd_divergence(
+            df_norm, open_p, close, high, low, volume
+        )
+        pbar.update(1)
+
+        # 29. Stopping Volume / Climax Exhaustion (1)
+        signals["volume_stopping_climax_signal"] = _calc_stopping_climax(
+            open_p, high, low, close, volume
         )
         pbar.update(1)
 

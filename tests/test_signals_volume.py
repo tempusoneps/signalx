@@ -46,20 +46,25 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLUME_SIGNALS = VOLUME_SIGNAL_COLUMNS
 
 
-def test_volume_signals_all_28_columns_present():
+def test_volume_signals_all_32_columns_present():
     """Verify generate_volume_signals produces exactly the expected volume signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volume_signals(df)
 
-    assert len(EXPECTED_VOLUME_SIGNALS) == 28
+    assert len(EXPECTED_VOLUME_SIGNALS) == 32
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLUME_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
+
+    assert "volume_session_vwap_cross_signal" in res.columns
+    assert "volume_rvol_time_bucket_signal" in res.columns
+    assert "volume_cvd_divergence_signal" in res.columns
+    assert "volume_stopping_climax_signal" in res.columns
 
 
 def test_volume_signals_all_states_valid():
@@ -97,7 +102,7 @@ def test_volume_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -112,7 +117,7 @@ def test_volume_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -132,7 +137,7 @@ def test_volume_signals_normalization():
     res = generate_volume_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
 
 
 def test_volume_signals_missing_columns():
@@ -149,7 +154,7 @@ def test_volume_signals_zero_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -163,7 +168,7 @@ def test_volume_signals_constant_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 28
+    assert len(res.columns) == 32
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -475,3 +480,162 @@ def test_signals_package_export():
     from signalx.signals import generate_volume_signals as exported_func
 
     assert callable(exported_func)
+
+
+def test_session_vwap_cross_signal_direct():
+    """Verify session VWAP crossover produces BUY on cross up, SELL on cross down, NONE on bar 0."""
+    dates = []
+    for d in ["2026-01-05", "2026-01-06"]:
+        dates.extend(pd.date_range(f"{d} 09:00", periods=10, freq="5min"))
+    dates = pd.DatetimeIndex(dates)
+    n = len(dates)
+
+    close = [100.0] * 10 + [100.0, 90.0, 91.0, 92.0, 93.0, 110.0, 112.0, 111.0, 85.0, 84.0]
+    volume = [1000.0] * n
+    high = [c + 1.0 for c in close]
+    low = [c - 1.0 for c in close]
+    open_p = [c for c in close]
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "date": dates,
+        },
+        index=dates,
+    )
+    res = generate_volume_signals(df)
+    sig = res["volume_session_vwap_cross_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert sig.iloc[0] == SignalState.NONE
+    assert sig.iloc[10] == SignalState.NONE
+    assert SignalState.BUY in sig.iloc[10:].values
+    assert SignalState.SELL in sig.iloc[10:].values
+
+
+def test_rvol_time_bucket_signal_direct():
+    """Verify RVOL time bucket signal triggers BUY on bullish candle and SELL on bearish candle when RVOL >= 2.0."""
+    dates = []
+    for d in ["2026-01-05", "2026-01-06", "2026-01-07"]:
+        dates.extend(pd.date_range(f"{d} 09:00", periods=5, freq="5min"))
+    dates = pd.DatetimeIndex(dates)
+    n = len(dates)
+
+    volume = [1000.0] * 10 + [1000.0, 3000.0, 1000.0, 3000.0, 1000.0]
+    open_p = [100.0] * n
+    close = [100.0] * n
+    close[11] = 105.0
+    close[13] = 95.0
+
+    high = [max(o, c) + 1.0 for o, c in zip(open_p, close, strict=False)]
+    low = [min(o, c) - 1.0 for o, c in zip(open_p, close, strict=False)]
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "date": dates,
+        },
+        index=dates,
+    )
+    res = generate_volume_signals(df)
+    sig = res["volume_rvol_time_bucket_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert (sig.iloc[:5] == SignalState.NONE).all()
+    assert sig.iloc[11] == SignalState.BUY
+    assert sig.iloc[13] == SignalState.SELL
+    assert sig.iloc[10] == SignalState.NONE
+
+
+def test_cvd_divergence_signal_direct():
+    """Verify CVD divergence signal detects bullish and bearish divergence."""
+    n = 25
+    open_p = [100.0] * n
+    high = [102.0] * n
+    low = [98.0] * n
+    close = [100.0] * n
+    volume = [1000.0] * n
+
+    # Bar 5: strong push up
+    high[5] = 110.0
+    close[5] = 110.0
+    volume[5] = 5000.0
+
+    # Bars 6, 7: drop with negative CVD
+    close[6] = 95.0
+    open_p[6] = 100.0
+    high[6] = 101.0
+    low[6] = 94.0
+    volume[6] = 3000.0
+
+    close[7] = 95.0
+    open_p[7] = 96.0
+    high[7] = 97.0
+    low[7] = 94.0
+    volume[7] = 2000.0
+
+    # Bar 8: price makes new 10-bar high close=111 (> 110), but red candle (open=112, close=111)
+    # CVD peak was at bar 5 (5000), while at bar 8 CVD is ~2690 < 5000 -> Bearish divergence -> SELL
+    open_p[8] = 112.0
+    high[8] = 113.0
+    low[8] = 105.0
+    close[8] = 111.0
+    volume[8] = 1000.0
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
+    res = generate_volume_signals(df)
+    sig = res["volume_cvd_divergence_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert sig.iloc[8] == SignalState.SELL
+
+
+def test_stopping_climax_signal_direct():
+    """Verify stopping volume and climax exhaustion signal on extreme volume wicks."""
+    n = 25
+    open_p = [100.0] * n
+    high = [102.0] * n
+    low = [98.0] * n
+    close = [100.0] * n
+    volume = [1000.0] * n
+
+    high[21] = 102.0
+    low[21] = 90.0
+    open_p[21] = 99.0
+    close[21] = 100.0
+    volume[21] = 3000.0
+
+    high[22] = 110.0
+    low[22] = 98.0
+    open_p[22] = 101.0
+    close[22] = 100.0
+    volume[22] = 3000.0
+
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
+    res = generate_volume_signals(df)
+    sig = res["volume_stopping_climax_signal"]
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert sig.iloc[21] == SignalState.BUY
+    assert sig.iloc[22] == SignalState.SELL
+    assert sig.iloc[10] == SignalState.NONE
