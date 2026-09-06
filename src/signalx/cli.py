@@ -236,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument(
         "-c",
         "--category",
-        help="Filter signals by category (e.g. trend, momentum, volatility, volume, candlestick, statistical, composite).",
+        help="Filter signals by category (e.g. trend, momentum, volatility, volume, candlestick, smc, statistical, composite).",
     )
 
     return parser
