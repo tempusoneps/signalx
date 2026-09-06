@@ -3,10 +3,10 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Tests: Pytest](https://img.shields.io/badge/tests-pytest-green.svg)](https://pytest.org)
-[![Signals: 230](https://img.shields.io/badge/signals-230-brightgreen.svg)](#signals-catalog-overview)
+[![Signals: 239](https://img.shields.io/badge/signals-239-brightgreen.svg)](#signals-catalog-overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
-`signalx` is a modern, production-grade Python library designed to automatically extract **230 standardized trading signals** from any OHLCV (Open, High, Low, Close, Volume) dataset. 
+`signalx` is a modern, production-grade Python library designed to automatically extract **239 standardized trading signals** from any OHLCV (Open, High, Low, Close, Volume) dataset. 
 
 Whether you are conducting quantitative market research, engineering features for machine learning models, or building algorithmic trading systems, `signalx` delivers a uniform, leak-free, zero-configuration signal generation pipeline.
 
@@ -14,7 +14,7 @@ Whether you are conducting quantitative market research, engineering features fo
 
 ## Key Features
 
-- **230 Standardized Signals across 7 Families**: Covers Trend (53), Momentum & Oscillators (38), Volatility & Breakouts (42), Volume Dynamics (28), Candlestick Formations (37), Statistical Metrics (20), and Multi-Indicator Composite Ensembles (12).
+- **239 Standardized Signals across 8 Families**: Covers Trend (52), Momentum & Oscillators (39), Volatility & Breakouts (44), Volume Dynamics (32), Candlestick Formations (28), Smart Money Concepts (11), Statistical Metrics (20), and Multi-Indicator Composite Ensembles (13).
 - **Strict 4-State String Representation**: Every single signal value strictly resolves to one of four canonical states: `"buy"`, `"sell"`, `"hold"`, or `"none"`. No inconsistent booleans, integers, or float scales.
 - **Deterministic Column Naming**: 100% of generated signal column names end with the suffix `_signal`. Defaults to compact coded identifiers (e.g. `TRD001_signal`, `MOM001_signal`, `CMP003_signal`), with full support for verbose semantic names (e.g. `trend_sma_cross_5_20_signal`) and zero-cost bidirectional column conversion.
 - **Zero Future Leakage**: Every calculation strictly adheres to causality — computations at bar $t$ use only past and current information ($\le t$).
@@ -49,7 +49,7 @@ import signalx
 # 1. Load any OHLCV DataFrame (Parquet or CSV)
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 230 standardized trading signals in coded format (default)
+# 2. Extract all 239 standardized trading signals in coded format (default)
 signals_df = signalx.generate_signals(df)
 
 # 3. Filter and inspect the generated signal columns (TRD001_signal, MOM001_signal, etc.)
@@ -82,7 +82,7 @@ uv run signalx inspect datasets/sample_ohlcv.parquet
 # Calculate buy/sell/hold/none state distribution for all signals
 uv run signalx stats datasets/sample_signals.parquet
 
-# List all 230 available signals with codes and descriptions
+# List all 239 available signals with codes and descriptions
 uv run signalx list
 ```
 
@@ -139,10 +139,10 @@ import pandas as pd
 
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# Retain original OHLCV columns + 230 coded signals
+# Retain original OHLCV columns + 239 coded signals
 full_df = signalx.generate_signals(df)
 
-# Return only 230 coded signals + Date
+# Return only 239 coded signals + Date
 signals_only_df = signalx.generate_signals(df, drop_ohlcv=True)
 
 # Generate with semantic column naming
@@ -246,7 +246,7 @@ uv run signalx stats datasets/sample_signals.parquet --json
 ### 4. `list`
 Lists registered signals, codes, and descriptions.
 ```bash
-# List all 230 signals
+# List all 239 signals
 uv run signalx list
 
 # Filter by category
