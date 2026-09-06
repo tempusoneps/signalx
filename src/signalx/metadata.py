@@ -11,10 +11,12 @@ VALID_CATEGORIES: frozenset[str] = frozenset(
         "volatility",
         "volume",
         "candlestick",
+        "smc",
         "statistical",
         "composite",
     }
 )
+SIGNAL_CATEGORIES: frozenset[str] = VALID_CATEGORIES
 
 
 @dataclass(frozen=True)
@@ -357,13 +359,6 @@ def _initialize_default_catalog() -> None:
             "Close crosses below TMA 10",
         ),
         (
-            "trend_market_structure_break_signal",
-            "Market Structure Break (MSB) higher high / lower low breakout",
-            "signalx_native",
-            "Close breaks above 10-bar recent high after making lower low",
-            "Close breaks below 10-bar recent low after making higher high",
-        ),
-        (
             "trend_ma_alignment_20_50_signal",
             "Moving Average Alignment (Close > SMA50 and SMA20 > SMA50)",
             "signalx_native",
@@ -497,9 +492,12 @@ def _initialize_default_catalog() -> None:
             "Close crosses below ZLEMA 21",
         ),
     ]
-    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(trend_definitions, start=1):
+    trend_codes = [f"TRD{i:03d}_signal" for i in range(1, 34)] + [
+        f"TRD{i:03d}_signal" for i in range(35, 54)
+    ]
+    for code, (name, desc, lib, buy_t, sell_t) in zip(trend_codes, trend_definitions, strict=True):
         register_signal(
-            code=f"TRD{idx:03d}_signal",
+            code=code,
             name=name,
             category="trend",
             description=desc,
@@ -1478,20 +1476,6 @@ def _initialize_default_catalog() -> None:
             "High sweeps 5-bar high and reverses to close bearish (Close < Open)",
         ),
         (
-            "cdl_liquidity_sweep_signal",
-            "Liquidity Sweep (5-bar extreme sweep with close back inside)",
-            "signalx_native",
-            "Low sweeps 5-bar low but Close finishes above the swept level",
-            "High sweeps 5-bar high but Close finishes below the swept level",
-        ),
-        (
-            "cdl_equal_high_low_sweep_signal",
-            "Equal Highs / Equal Lows liquidity sweep",
-            "signalx_native",
-            "Equal Lows swept and Close > Low[1]",
-            "Equal Highs swept and Close < High[1]",
-        ),
-        (
             "cdl_gap_up_down_signal",
             "Opening Price Gap Up / Down relative to prior bar range",
             "signalx_native",
@@ -1555,55 +1539,6 @@ def _initialize_default_catalog() -> None:
             "Close < Close[1] < Close[2] on declining Volume (Bearish exhaustion push)",
         ),
         (
-            "cdl_fvg_bullish_mitigation_signal",
-            "Fair Value Gap (FVG) Bullish Mitigation & Invalidation",
-            "signalx_native",
-            "Low retraces into Bullish FVG [High[t-2], Low[t]] zone and Close > Open",
-            "Close breaks below Bullish FVG bottom High[t-2]",
-        ),
-        (
-            "cdl_fvg_bearish_mitigation_signal",
-            "Fair Value Gap (FVG) Bearish Mitigation & Invalidation",
-            "signalx_native",
-            "Close breaks above Bearish FVG top Low[t-2]",
-            "High retraces into Bearish FVG [High[t], Low[t-2]] zone and Close < Open",
-        ),
-        (
-            "cdl_order_block_retest_signal",
-            "Order Block (OB) Retest and Mitigation",
-            "signalx_native",
-            "Price retraces into Bullish OB body with Close > Open",
-            "Price retraces into Bearish OB body with Close < Open",
-        ),
-        (
-            "cdl_break_of_structure_signal",
-            "Break of Structure (BOS) aligned with trend filter",
-            "signalx_native",
-            "Close > 10-bar High and SMA20 > SMA50 (Bullish BOS)",
-            "Close < 10-bar Low and SMA20 < SMA50 (Bearish BOS)",
-        ),
-        (
-            "cdl_change_of_character_signal",
-            "Change of Character (CHoCH) structural trend reversal",
-            "signalx_native",
-            "Close > 5-bar High when prior 10-bar regime had SMA20 < SMA50",
-            "Close < 5-bar Low when prior 10-bar regime had SMA20 > SMA50",
-        ),
-        (
-            "cdl_judas_swing_signal",
-            "Judas Swing (False breakout stop-hunt with reversal close)",
-            "signalx_native",
-            "Low < 5-bar Low and Close > Open in upper half of bar (Bullish Judas Swing)",
-            "High > 5-bar High and Close < Open in lower half of bar (Bearish Judas Swing)",
-        ),
-        (
-            "cdl_inducement_sweep_signal",
-            "Inducement Sweep (Minor extreme sweep with >=50% wick rejection)",
-            "signalx_native",
-            "Low < Low[1] with lower wick >= 50% range and Close > Open",
-            "High > High[1] with upper wick >= 50% range and Close < Open",
-        ),
-        (
             "cdl_thrust_bar_signal",
             "Thrust Bar (Body >= 75% range and >= 1.8x SMA20 body)",
             "signalx_native",
@@ -1624,19 +1559,110 @@ def _initialize_default_catalog() -> None:
             "Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar",
             "Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar",
         ),
+    ]
+    cdl_codes = (
+        [f"CDL{i:03d}_signal" for i in range(1, 17)]
+        + [f"CDL{i:03d}_signal" for i in range(19, 28)]
+        + [f"CDL{i:03d}_signal" for i in range(35, 38)]
+    )
+    for code, (name, desc, lib, buy_t, sell_t) in zip(cdl_codes, cdl_definitions, strict=True):
+        register_signal(
+            code=code,
+            name=name,
+            category="candlestick",
+            description=desc,
+            library=lib,
+            buy_trigger=buy_t,
+            sell_trigger=sell_t,
+        )
+
+    # -------------------------------------------------------------------------
+    # 6. SMART MONEY CONCEPTS (SMC) SIGNALS (11 signals)
+    # -------------------------------------------------------------------------
+    smc_definitions = [
         (
-            "cdl_pdh_pdl_sweep_signal",
+            "smc_fvg_bullish_mitigation_signal",
+            "Bullish Fair Value Gap (FVG) mitigation & retest",
+            "signalx_native",
+            "Price retraces into bullish FVG zone (l <= fvg_top and c >= fvg_bottom with bullish close)",
+            "Price breaks below bullish FVG bottom (invalidation)",
+        ),
+        (
+            "smc_fvg_bearish_mitigation_signal",
+            "Bearish Fair Value Gap (FVG) mitigation & retest",
+            "signalx_native",
+            "Price retraces into bearish FVG zone (h >= fvg_bottom and c <= fvg_top with bearish close)",
+            "Price breaks above bearish FVG top (invalidation)",
+        ),
+        (
+            "smc_order_block_retest_signal",
+            "Bullish / Bearish Order Block (OB) formation and retest",
+            "signalx_native",
+            "Price retests bullish OB body and closes bullish",
+            "Price retests bearish OB body and closes bearish",
+        ),
+        (
+            "smc_break_of_structure_signal",
+            "Break of Structure (BOS) trend continuation",
+            "signalx_native",
+            "Close breaks 10-bar high with SMA20 > SMA50 (bullish continuation)",
+            "Close breaks 10-bar low with SMA20 < SMA50 (bearish continuation)",
+        ),
+        (
+            "smc_change_of_character_signal",
+            "Change of Character (CHoCH) structural trend reversal",
+            "signalx_native",
+            "Close breaks 5-bar high after sustained bearish regime (bullish reversal)",
+            "Close breaks 5-bar low after sustained bullish regime (bearish reversal)",
+        ),
+        (
+            "smc_market_structure_break_signal",
+            "Market Structure Break (MSB) higher high / lower low breakout",
+            "signalx_native",
+            "Close breaks recent high after lower low (bullish market structure break)",
+            "Close breaks recent low after higher high (bearish market structure break)",
+        ),
+        (
+            "smc_liquidity_sweep_signal",
+            "5-bar high/low liquidity sweep with close back inside",
+            "signalx_native",
+            "Low < 5-bar min but Close > 5-bar min (Bullish liquidity sweep)",
+            "High > 5-bar max but Close < 5-bar max (Bearish liquidity sweep)",
+        ),
+        (
+            "smc_equal_high_low_sweep_signal",
+            "Equal Highs / Equal Lows (EQH/EQL) liquidity sweep",
+            "signalx_native",
+            "Equal low swept and Close > previous Low (Bullish equal low sweep)",
+            "Equal high swept and Close < previous High (Bearish equal high sweep)",
+        ),
+        (
+            "smc_judas_swing_signal",
+            "ICT Judas Swing false opening breakout & reversal",
+            "signalx_native",
+            "Low sweeps 5-bar low then closes above midpoint and open (Bullish Judas Swing)",
+            "High sweeps 5-bar high then closes below midpoint and open (Bearish Judas Swing)",
+        ),
+        (
+            "smc_inducement_sweep_signal",
+            "Inducement (IDM) minor liquidity sweep & wick rejection",
+            "signalx_native",
+            "Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement)",
+            "High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement)",
+        ),
+        (
+            "smc_pdh_pdl_sweep_signal",
             "VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside)",
             "signalx_native",
             "Price wicks below PDL then closes above it (bullish PDL sweep reversal)",
             "Price wicks above PDH then closes below it (bearish PDH sweep reversal)",
         ),
     ]
-    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(cdl_definitions, start=1):
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(smc_definitions, start=1):
         register_signal(
-            code=f"CDL{idx:03d}_signal",
+            code=f"SMC{idx:03d}_signal",
             name=name,
-            category="candlestick",
+            category="smc",
             description=desc,
             library=lib,
             buy_trigger=buy_t,
@@ -1912,6 +1938,7 @@ _initialize_default_catalog()
 
 __all__ = [
     "SIGNAL_CATALOG",
+    "SIGNAL_CATEGORIES",
     "SIGNAL_CODE_CATALOG",
     "VALID_CATEGORIES",
     "SignalMetadata",

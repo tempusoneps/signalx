@@ -31,6 +31,7 @@ def test_valid_categories_set():
         "volatility",
         "volume",
         "candlestick",
+        "smc",
         "statistical",
         "composite",
     }
@@ -105,26 +106,69 @@ def test_catalog_richness_and_validity():
 
 
 def test_deterministic_category_codes():
-    expected_category_prefixes = {
-        "trend": ("TRD", 53),
+    expected_category_counts = {
+        "trend": ("TRD", 52),
         "momentum": ("MOM", 39),
         "volatility": ("VOL", 44),
         "volume": ("VLM", 32),
-        "candlestick": ("CDL", 38),
+        "candlestick": ("CDL", 28),
+        "smc": ("SMC", 11),
         "statistical": ("STA", 20),
         "composite": ("CMP", 13),
     }
 
-    for cat, (prefix, expected_count) in expected_category_prefixes.items():
+    for cat, (prefix, expected_count) in expected_category_counts.items():
         signals = get_signals_by_category(cat)
         assert len(signals) == expected_count, (
             f"Category {cat} expected {expected_count} signals, got {len(signals)}"
         )
-        for i, meta in enumerate(signals, start=1):
-            expected_code = f"{prefix}{i:03d}_signal"
-            assert meta.code == expected_code, (
-                f"Expected {expected_code} for {meta.name}, got {meta.code}"
-            )
+        for meta in signals:
+            assert meta.code.startswith(prefix)
+            assert meta.code.endswith("_signal")
+
+    # Contiguous categories check
+    for cat, prefix in [
+        ("momentum", "MOM"),
+        ("volatility", "VOL"),
+        ("volume", "VLM"),
+        ("smc", "SMC"),
+        ("statistical", "STA"),
+        ("composite", "CMP"),
+    ]:
+        for i, meta in enumerate(get_signals_by_category(cat), start=1):
+            assert meta.code == f"{prefix}{i:03d}_signal"
+
+    # Verify preserved trend codes
+    trend_codes = [s.code for s in get_signals_by_category("trend")]
+    assert "TRD034_signal" not in trend_codes
+    assert "TRD001_signal" in trend_codes
+    assert "TRD053_signal" in trend_codes
+
+    # Verify preserved candlestick codes
+    cdl_codes = [s.code for s in get_signals_by_category("candlestick")]
+    assert "CDL001_signal" in cdl_codes
+    assert "CDL016_signal" in cdl_codes
+    assert "CDL017_signal" not in cdl_codes
+    assert "CDL018_signal" not in cdl_codes
+    assert "CDL019_signal" in cdl_codes
+    assert "CDL028_signal" not in cdl_codes
+    assert "CDL035_signal" in cdl_codes
+    assert "CDL037_signal" in cdl_codes
+    assert "CDL038_signal" not in cdl_codes
+
+
+def test_get_signals_by_category_smc():
+    """Verify smc category returns 11 signals with SMC001_signal to SMC011_signal."""
+    smc_signals = get_signals_by_category("smc")
+    assert len(smc_signals) == 11
+    expected_codes = [f"SMC{i:03d}_signal" for i in range(1, 12)]
+    for i, meta in enumerate(smc_signals, start=1):
+        assert meta.code == f"SMC{i:03d}_signal"
+        assert meta.category == "smc"
+        assert meta.library == "signalx_native"
+        assert meta.name.startswith("smc_")
+        assert meta.name.endswith("_signal")
+    assert [s.code for s in smc_signals] == expected_codes
 
 
 def test_list_categories():
@@ -258,26 +302,30 @@ def test_to_code_names_idempotent_and_passthrough():
 def test_register_signal_success():
     custom_code = "TRD999_signal"
     custom_name = "trend_custom_test_mock_signal"
-    register_signal(
-        code=custom_code,
-        name=custom_name,
-        category="trend",
-        description="Custom registered test signal",
-        library="signalx_native",
-        buy_trigger="Custom buy rule",
-        sell_trigger="Custom sell rule",
-    )
-    assert custom_name in SIGNAL_CATALOG
-    assert custom_code in SIGNAL_CODE_CATALOG
-    registered = get_signal_metadata(custom_name)
-    assert registered is not None
-    assert registered.code == custom_code
-    assert registered.name == custom_name
-    assert registered.category == "trend"
+    try:
+        register_signal(
+            code=custom_code,
+            name=custom_name,
+            category="trend",
+            description="Custom registered test signal",
+            library="signalx_native",
+            buy_trigger="Custom buy rule",
+            sell_trigger="Custom sell rule",
+        )
+        assert custom_name in SIGNAL_CATALOG
+        assert custom_code in SIGNAL_CODE_CATALOG
+        registered = get_signal_metadata(custom_name)
+        assert registered is not None
+        assert registered.code == custom_code
+        assert registered.name == custom_name
+        assert registered.category == "trend"
 
-    # Also retrievable by code
-    assert get_signal_by_code(custom_code) is registered
-    assert get_signal_metadata(custom_code) is registered
+        # Also retrievable by code
+        assert get_signal_by_code(custom_code) is registered
+        assert get_signal_metadata(custom_code) is registered
+    finally:
+        SIGNAL_CATALOG.pop(custom_name, None)
+        SIGNAL_CODE_CATALOG.pop(custom_code, None)
 
 
 def test_register_signal_invalid_code():
