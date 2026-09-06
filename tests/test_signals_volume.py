@@ -175,6 +175,31 @@ def test_volume_signals_constant_volume():
         assert unique_vals.issubset(ALL_SIGNAL_STATES)
 
 
+def test_volume_signals_flat_data():
+    """Verify that flat data (zero price movement) executes without RuntimeWarning (e.g. division by zero)."""
+    import warnings
+
+    df_flat = pd.DataFrame(
+        {
+            "open": [100.0] * 50,
+            "high": [100.0] * 50,
+            "low": [100.0] * 50,
+            "close": [100.0] * 50,
+            "volume": [1000.0] * 50,
+        }
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        res = generate_volume_signals(df_flat)
+
+    assert len(res) == 50
+    assert len(res.columns) == 32
+    for col in res.columns:
+        assert not res[col].isna().any()
+        unique_vals = set(res[col].unique())
+        assert unique_vals.issubset(ALL_SIGNAL_STATES)
+
+
 def test_volume_signals_datetime_index_preserved():
     """Verify that custom DatetimeIndex is preserved across all output columns."""
     dates = pd.date_range("2026-01-01", periods=100, freq="1h")
