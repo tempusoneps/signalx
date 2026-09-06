@@ -18,6 +18,16 @@ def generate_signals(
 ) -> pd.DataFrame:
     """Generate 100+ standardized trading signal columns from an OHLCV dataset.
 
+    Executes all 8 signal categories in order:
+    1. Trend
+    2. Momentum
+    3. Volatility
+    4. Volume
+    5. Candlestick
+    6. SMC
+    7. Statistical
+    8. Composite
+
     Parameters:
         df: Input DataFrame with open, high, low, close, volume columns.
         drop_ohlcv: If True, returns only date/datetime and signal columns.

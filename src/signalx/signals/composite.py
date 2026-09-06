@@ -311,26 +311,34 @@ def _calc_smc_trend_volume_confluence(
     smc_bull = pd.Series(False, index=df_norm.index)
     smc_bear = pd.Series(False, index=df_norm.index)
 
+    has_smc_cols = False
     if intermediate is not None and not intermediate.empty:
-        smc_keywords = ["fvg", "order_block", "liquidity_sweep", "trend_msb"]
-        smc_cols = [c for c in intermediate.columns if any(kw in c for kw in smc_keywords)]
-        for c in smc_cols:
-            if "bearish" in c:
-                smc_bear = smc_bear | (intermediate[c] == SignalState.SELL)
-            elif "bullish" in c:
-                smc_bull = smc_bull | (intermediate[c] == SignalState.BUY)
-            else:
-                smc_bull = smc_bull | (intermediate[c] == SignalState.BUY)
-                smc_bear = smc_bear | (intermediate[c] == SignalState.SELL)
-    else:
+        smc_keywords = ["fvg", "order_block", "liquidity_sweep", "market_structure_break"]
+        smc_cols = [
+            c
+            for c in intermediate.columns
+            if c.startswith("smc_") or c.startswith("SMC") or any(kw in c for kw in smc_keywords)
+        ]
+        if smc_cols:
+            has_smc_cols = True
+            for c in smc_cols:
+                if "bearish" in c:
+                    smc_bear = smc_bear | (intermediate[c] == SignalState.SELL)
+                elif "bullish" in c:
+                    smc_bull = smc_bull | (intermediate[c] == SignalState.BUY)
+                else:
+                    smc_bull = smc_bull | (intermediate[c] == SignalState.BUY)
+                    smc_bear = smc_bear | (intermediate[c] == SignalState.SELL)
+
+    if not has_smc_cols:
         # Fallback raw price action: 3-bar Fair Value Gap / Order Block
         high = df_norm["high"]
         low = df_norm["low"]
         open_p = df_norm["open"]
         # Bullish FVG: Low > High[t-2] and green candle
-        fvg_bull = (low > high.shift(2)) & (close > open_p)
+        fvg_bull = (low > high.shift(2)).fillna(False) & (close > open_p)
         # Bearish FVG: High < Low[t-2] and red candle
-        fvg_bear = (high < low.shift(2)) & (close < open_p)
+        fvg_bear = (high < low.shift(2)).fillna(False) & (close < open_p)
         smc_bull = fvg_bull
         smc_bear = fvg_bear
 
@@ -498,6 +506,7 @@ def generate_composite_signals(
             # Import lazily to avoid circular dependencies
             from signalx.signals.candlestick import generate_candlestick_signals
             from signalx.signals.momentum import generate_momentum_signals
+            from signalx.signals.smc import generate_smc_signals
             from signalx.signals.statistical import generate_statistical_signals
             from signalx.signals.trend import generate_trend_signals
             from signalx.signals.volatility import generate_volatility_signals
@@ -508,8 +517,9 @@ def generate_composite_signals(
             vol = generate_volatility_signals(df_norm, show_progress=show_progress)
             volume = generate_volume_signals(df_norm, show_progress=show_progress)
             cdl = generate_candlestick_signals(df_norm, show_progress=show_progress)
+            smc = generate_smc_signals(df_norm, show_progress=show_progress)
             stat = generate_statistical_signals(df_norm, show_progress=show_progress)
-            intermediate = pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
+            intermediate = pd.concat([trend, mom, vol, volume, cdl, smc, stat], axis=1)
         else:
             intermediate = intermediate_signals
 
@@ -660,7 +670,7 @@ def _calc_vn30_intraday_confluence(
 
     vwap_sig = _get_series("volume_session_vwap_cross_signal", "VLM029_signal")
     ib_sig = _get_series("vol_ib_breakout_30m_signal", "VOL043_signal")
-    sweep_sig = _get_series("cdl_pdh_pdl_sweep_signal", "CDL038_signal")
+    sweep_sig = _get_series("smc_pdh_pdl_sweep_signal", "SMC011_signal")
 
     if "volume" in df.columns:
         vol = df["volume"].astype(float)

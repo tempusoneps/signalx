@@ -23,6 +23,7 @@ from signalx.signals.composite import (
     generate_composite_signals,
 )
 from signalx.signals.momentum import generate_momentum_signals
+from signalx.signals.smc import generate_smc_signals
 from signalx.signals.statistical import generate_statistical_signals
 from signalx.signals.trend import generate_trend_signals
 from signalx.signals.volatility import generate_volatility_signals
@@ -65,14 +66,15 @@ EXPECTED_COMPOSITE_SIGNALS = COMPOSITE_SIGNAL_COLUMNS
 
 
 def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
-    """Helper to generate all 6 family signal DataFrames concatenated."""
+    """Helper to generate all 7 family signal DataFrames concatenated."""
     trend = generate_trend_signals(df)
     mom = generate_momentum_signals(df)
     vol = generate_volatility_signals(df)
     volume = generate_volume_signals(df)
     cdl = generate_candlestick_signals(df)
+    smc = generate_smc_signals(df)
     stat = generate_statistical_signals(df)
-    return pd.concat([trend, mom, vol, volume, cdl, stat], axis=1)
+    return pd.concat([trend, mom, vol, volume, cdl, smc, stat], axis=1)
 
 
 def test_composite_signals_all_13_columns_present():
@@ -405,8 +407,8 @@ def test_smc_trend_volume_confluence_direct():
     )
     intermediate = pd.DataFrame(
         {
-            "cdl_fvg_bullish_mitigation_signal": [SignalState.HOLD] * (n - 1) + [SignalState.BUY],
-            "cdl_order_block_retest_signal": [SignalState.NONE] * n,
+            "smc_fvg_bullish_mitigation_signal": [SignalState.HOLD] * (n - 1) + [SignalState.BUY],
+            "smc_order_block_retest_signal": [SignalState.NONE] * n,
         }
     )
 
@@ -535,7 +537,7 @@ def test_vn30_intraday_confluence_direct():
                 SignalState.NONE,
                 SignalState.BUY,
             ],
-            "cdl_pdh_pdl_sweep_signal": [
+            "smc_pdh_pdl_sweep_signal": [
                 SignalState.NONE,
                 SignalState.NONE,
                 SignalState.NONE,
@@ -557,7 +559,7 @@ def test_vn30_intraday_confluence_direct():
     assert sig.iloc[8] == SignalState.SELL
     assert sig.iloc[9] == SignalState.NONE
 
-    # Test coded column names fallback (VLM029, VOL043, CDL038)
+    # Test coded column names fallback (VLM029, VOL043, SMC011)
     df_coded = pd.DataFrame(
         {
             "open": [100.0] * 6,
@@ -571,7 +573,7 @@ def test_vn30_intraday_confluence_direct():
         {
             "VLM029_signal": [SignalState.NONE] * 5 + [SignalState.BUY],
             "VOL043_signal": [SignalState.NONE] * 5 + [SignalState.BUY],
-            "CDL038_signal": [SignalState.NONE] * 6,
+            "SMC011_signal": [SignalState.NONE] * 6,
         }
     )
     sig_coded = _calc_vn30_intraday_confluence(df_coded, intermediate_coded)
@@ -596,7 +598,7 @@ def test_vn30_intraday_confluence_direct():
         {
             "volume_session_vwap_cross_signal": [SignalState.BUY],
             "vol_ib_breakout_30m_signal": [SignalState.BUY],
-            "cdl_pdh_pdl_sweep_signal": [SignalState.NONE],
+            "smc_pdh_pdl_sweep_signal": [SignalState.NONE],
         },
         index=[60],
     )
