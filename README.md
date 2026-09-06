@@ -90,18 +90,19 @@ uv run signalx list
 
 ## Signals Catalog Overview
 
-`signalx` provides 230 production-ready trading signals partitioned across 7 analytical families:
+`signalx` provides 239 production-ready trading signals partitioned across 8 analytical families:
 
 | Category | Signals Count | Code Prefix | Primary Analytical Focus | Example Signals |
 | :--- | :--- | :--- | :--- | :--- |
-| **Trend** | 53 | `TRD` | Directional moving average crossovers, MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, TRIX, KAMA, TMA | `TRD001_signal` (`trend_sma_cross_5_20_signal`), `TRD017_signal` (`trend_macd_cross_signal`), `TRD022_signal` (`trend_supertrend_10_3_signal`) |
-| **Momentum** | 38 | `MOM` | Oscillators, overbought/oversold boundaries, Connors RSI, RSI divergence, MFI reversals | `MOM001_signal` (`mom_rsi_ob_os_14_signal`), `MOM007_signal` (`mom_stoch_kd_cross_14_3_3_signal`), `MOM012_signal` (`mom_cci_100_14_signal`) |
-| **Volatility** | 42 | `VOL` | Bollinger Bands, Donchian channels, Keltner channels, TTM Squeeze, ATR Trailing Stops, LinReg channels, Envelopes | `VOL001_signal` (`vol_bb_breakout_20_20_signal`), `VOL008_signal` (`vol_donchian_breakout_20_signal`), `VOL012_signal` (`vol_ttm_squeeze_signal`) |
-| **Volume** | 28 | `VLM` | Volume dynamics, flow accumulation/distribution, VWAP crossovers, Volume Spikes, VSA, VPT divergence | `VLM001_signal` (`volume_obv_ema_cross_20_signal`), `VLM002_signal` (`volume_cmf_zero_cross_20_signal`), `VLM004_signal` (`volume_vwap_cross_20_signal`) |
-| **Candlestick** | 37 | `CDL` | Price action geometry, rejection wicks, single/multi-bar reversal formations, couple patterns, liquidity sweeps | `CDL001_signal` (`cdl_engulfing_signal`), `CDL003_signal` (`cdl_pinbar_signal`), `CDL002_signal` (`cdl_hammer_star_signal`) |
+| **Trend** | 52 | `TRD` | Directional moving average crossovers, MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, TRIX, KAMA, TMA | `TRD001_signal` (`trend_sma_cross_5_20_signal`), `TRD017_signal` (`trend_macd_cross_signal`), `TRD022_signal` (`trend_supertrend_10_3_signal`) |
+| **Momentum** | 39 | `MOM` | Oscillators, overbought/oversold boundaries, Connors RSI, RSI divergence, MFI reversals | `MOM001_signal` (`mom_rsi_ob_os_14_signal`), `MOM007_signal` (`mom_stoch_kd_cross_14_3_3_signal`), `MOM012_signal` (`mom_cci_100_14_signal`) |
+| **Volatility** | 44 | `VOL` | Bollinger Bands, Donchian channels, Keltner channels, TTM Squeeze, ATR Trailing Stops, LinReg channels, Envelopes | `VOL001_signal` (`vol_bb_breakout_20_20_signal`), `VOL008_signal` (`vol_donchian_breakout_20_signal`), `VOL012_signal` (`vol_ttm_squeeze_signal`) |
+| **Volume** | 32 | `VLM` | Volume dynamics, flow accumulation/distribution, VWAP crossovers, Volume Spikes, VSA, VPT divergence | `VLM001_signal` (`volume_obv_ema_cross_20_signal`), `VLM002_signal` (`volume_cmf_zero_cross_20_signal`), `VLM004_signal` (`volume_vwap_cross_20_signal`) |
+| **Candlestick** | 28 | `CDL` | Price action geometry, rejection wicks, single/multi-bar reversal formations, couple patterns, body expansion | `CDL001_signal` (`cdl_engulfing_signal`), `CDL003_signal` (`cdl_pinbar_signal`), `CDL002_signal` (`cdl_hammer_star_signal`) |
+| **SMC** | 11 | `SMC` | Smart Money Concepts, Order Blocks, Fair Value Gaps (FVG), Market Structure Breaks (MSB/BOS/CHoCH), Liquidity Sweeps | `SMC001_signal` (`smc_fvg_bullish_mitigation_signal`), `SMC003_signal` (`smc_order_block_retest_signal`), `SMC007_signal` (`smc_liquidity_sweep_signal`) |
 | **Statistical** | 20 | `STA` | Rolling Z-scores, linear regression slope/crossings, market efficiency filters, MA stretch Z-score, Hurst proxy | `STA002_signal` (`stat_price_zscore_20_signal`), `STA006_signal` (`stat_ker_trend_filter_10_signal`), `STA008_signal` (`stat_chop_regime_14_signal`) |
-| **Composite** | 12 | `CMP` | Category consensus voting, trend/momentum confluence, multi-indicator ensembles, MACD+Candlestick confluence | `CMP003_signal` (`comp_master_ensemble_signal`), `CMP001_signal` (`comp_trend_consensus_signal`), `CMP005_signal` (`comp_trend_momentum_align_signal`) |
-| **Total** | **230** | | **Full Quantitative Feature Suite** | |
+| **Composite** | 13 | `CMP` | Category consensus voting, trend/momentum confluence, multi-indicator ensembles, MACD+Candlestick confluence | `CMP003_signal` (`comp_master_ensemble_signal`), `CMP001_signal` (`comp_trend_consensus_signal`), `CMP005_signal` (`comp_trend_momentum_align_signal`) |
+| **Total** | **239** | | **Full Quantitative Feature Suite** | |
 
 For the complete catalog with exact buy and sell trigger conditions, see [docs/.ai/SIGNALS_CATALOG.md](docs/.ai/SIGNALS_CATALOG.md).
 
@@ -125,12 +126,12 @@ print(SignalState.NONE)  # "none" -> Neutral / Indeterminate / Warmup phase
 ## Python API Reference
 
 ### `signalx.generate_signals(df: pd.DataFrame, drop_ohlcv: bool = False, show_progress: bool = False, naming: Literal["code", "semantic"] = "code") -> pd.DataFrame`
-The primary pipeline execution function. Normalizes input columns, executes all 7 signal category generators, and compiles the result.
+The primary pipeline execution function. Normalizes input columns, executes all 8 signal category generators, and compiles the result.
 
 - `df`: Input `pandas.DataFrame` with Open, High, Low, Close, and Volume columns (case-insensitive).
-- `drop_ohlcv`: When `False` (default), returns the original DataFrame concatenated with the 230 signal columns. When `True`, returns only date/datetime columns and signal columns.
+- `drop_ohlcv`: When `False` (default), returns the original DataFrame concatenated with the 239 signal columns. When `True`, returns only date/datetime columns and signal columns.
 - `show_progress`: When `True`, displays real-time per-group progress bars in the terminal. Default is `False`.
-- `naming`: Output column naming format. `"code"` (default) generates compact coded columns (`TRD001_signal` ... `CMP012_signal`), `"semantic"` generates descriptive column names (`trend_sma_cross_5_20_signal` ...).
+- `naming`: Output column naming format. `"code"` (default) generates compact coded columns (`TRD001_signal` ... `CMP013_signal`), `"semantic"` generates descriptive column names (`trend_sma_cross_5_20_signal` ...).
 
 ```python
 import signalx

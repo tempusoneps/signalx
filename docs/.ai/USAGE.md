@@ -14,7 +14,7 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 230 standardized signals in coded format (default)
+# 2. Extract all 239 standardized signals in coded format (default)
 signals_df = signalx.generate_signals(df, show_progress=True)
 
 # 3. View extracted signal columns (e.g. TRD001_signal, MOM001_signal, CMP003_signal)
@@ -76,6 +76,7 @@ rsi_buys = signals_df[signals_df["MOM001_signal"] == SignalState.BUY]
 # Filter signals by category using column prefixes (coded format)
 trend_signals = signals_df.filter(regex=r"^TRD\d{3}_signal$")
 volatility_signals = signals_df.filter(regex=r"^VOL\d{3}_signal$")
+smc_signals = signals_df.filter(regex=r"^SMC\d{3}_signal$")
 composite_signals = signals_df.filter(regex=r"^CMP\d{3}_signal$")
 ```
 
@@ -173,7 +174,7 @@ uv run signalx generate datasets/sample_ohlcv.parquet \
   -o datasets/sample_signals.parquet \
   --stats-report
 
-# Output only the 230 signal columns (drop OHLCV price columns)
+# Output only the 239 signal columns (drop OHLCV price columns)
 uv run signalx generate datasets/sample_ohlcv.csv \
   -o datasets/signals_only.parquet \
   --drop-ohlcv
@@ -196,9 +197,9 @@ uv run signalx stats datasets/sample_signals.parquet --json
 
 ### Listing Signal Catalog
 ```bash
-# List all 230 signals with codes, names, and descriptions
+# List all 239 signals with codes, names, and descriptions
 uv run signalx list
 
 # Filter listing to a specific category
-uv run signalx list --category composite
+uv run signalx list --category smc
 ```

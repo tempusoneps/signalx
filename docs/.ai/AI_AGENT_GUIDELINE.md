@@ -24,7 +24,7 @@ The core mission of `signalx` is to provide quantitative analysts, machine learn
    Calculations at bar $t$ must strictly depend only on information available at or before bar $t$. Shift operations or forward-looking rollings are strictly forbidden in signal calculation logic.
 
 4. **Single Unified Pipeline**:
-   `signalx.generate_signals(df)` executes all 7 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `statistical`, `composite`) with zero configuration required (defaults to coded format `naming="code"`).
+   `signalx.generate_signals(df)` executes all 8 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `statistical`, `composite`) with zero configuration required (defaults to coded format `naming="code"`).
 
 5. **Sub-second Test Suite Execution**:
    All unit and integration tests must run against lightweight synthetic datasets (< 500 rows) to keep the entire test suite fast and deterministic.
