@@ -33,7 +33,7 @@ This document establishes the mandatory architectural rules and invariant constr
 ---
 
 ## Rule 4: Unified Single-Pipeline Execution
-- **Requirement**: Calling `signalx.generate_signals(df)` must run all 7 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `statistical`, `composite`) without requiring manual multi-stage wiring.
+- **Requirement**: Calling `signalx.generate_signals(df)` must run all 8 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `statistical`, `composite`) without requiring manual multi-stage wiring.
 - **Behavior**:
   - `naming="code"` (default): Returns compact coded column names (`TRD001_signal` ... `CMP008_signal`).
   - `naming="semantic"`: Returns verbose descriptive column names (`trend_sma_cross_5_20_signal` ...).
@@ -59,11 +59,12 @@ This document establishes the mandatory architectural rules and invariant constr
 ---
 
 ## Rule 7: Strict Category Partitioning
-- **Requirement**: Every signal must belong to exactly one of the 7 valid categories:
-  1. `trend` (Trend-following & Moving Averages)
-  2. `momentum` (Oscillators & Speed of Price Change)
-  3. `volatility` (Bands, Envelopes & Breakouts)
-  4. `volume` (Volume Dynamics & Flow Accumulation)
-  5. `candlestick` (Price Action Geometry & Multi-Bar Formations)
-  6. `statistical` (Z-Scores, Regressions & Regime Filters)
-  7. `composite` (Consensus, Confluence & Ensemble Voting)
+- **Requirement**: Every signal must belong to exactly one of the 8 valid categories:
+  1. `trend` (Trend-following & Moving Averages) (52 signals)
+  2. `momentum` (Oscillators & Speed of Price Change) (39 signals)
+  3. `volatility` (Bands, Envelopes & Breakouts) (44 signals)
+  4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
+  5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
+  6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
+  7. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
+  8. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)

@@ -1,21 +1,22 @@
 # SignalX Signals Catalog (239 Signals)
 
-`signalx` provides 239 standardized trading signals partitioned across 7 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 239 standardized trading signals partitioned across 8 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
 | Category | Count | Primary Focus |
 | :--- | :--- | :--- |
-| **Candlestick** | 38 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
+| **Candlestick** | 28 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
 | **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
 | **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
+| **SMC** | 11 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
-| **Trend** | 53 | Directional trend following, moving average crossovers, MACD, and regime tracking |
+| **Trend** | 52 | Directional trend following, moving average crossovers, MACD, and regime tracking |
 | **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
 | **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
 | **Total** | **239** | **Full Quantitative Feature Suite** |
 
-## Candlestick Signals (38 Signals)
+## Candlestick Signals (28 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -35,8 +36,6 @@
 | `CDL014_signal` | `cdl_tweezer_tops_bottoms_signal` | Tweezer Top (bearish) and Tweezer Bottom (bullish) dual matching shadow reversal | `signalx_native` | Tweezer Bottom: matching lows with bullish second candle | Tweezer Top: matching highs with bearish second candle |
 | `CDL015_signal` | `cdl_couple_cs_signal` | Couple Candlestick pattern (Green-Green breakout or Red-Red breakdown) | `signalx_native` | Green candle closes at high and breaks previous green candle high | Red candle closes at low and breaks previous red candle low |
 | `CDL016_signal` | `cdl_fakey_pattern_signal` | Fakey Pattern (False 5-bar breakout with strong reversal close) | `signalx_native` | Low sweeps 5-bar low and reverses to close bullish (Close > Open) | High sweeps 5-bar high and reverses to close bearish (Close < Open) |
-| `CDL017_signal` | `cdl_liquidity_sweep_signal` | Liquidity Sweep (5-bar extreme sweep with close back inside) | `signalx_native` | Low sweeps 5-bar low but Close finishes above the swept level | High sweeps 5-bar high but Close finishes below the swept level |
-| `CDL018_signal` | `cdl_equal_high_low_sweep_signal` | Equal Highs / Equal Lows liquidity sweep | `signalx_native` | Equal Lows swept and Close > Low[1] | Equal Highs swept and Close < High[1] |
 | `CDL019_signal` | `cdl_gap_up_down_signal` | Opening Price Gap Up / Down relative to prior bar range | `signalx_native` | Open > High[1] (Opening gap up) | Open < Low[1] (Opening gap down) |
 | `CDL020_signal` | `cdl_body_size_expansion_signal` | Candle body expansion (> 2.0x 20-period SMA body) | `signalx_native` | Body > 2.0 * SMA20(Body) and Close > Open (Bullish body expansion) | Body > 2.0 * SMA20(Body) and Close < Open (Bearish body expansion) |
 | `CDL021_signal` | `cdl_wick_rejection_signal` | Wick Rejection (> 2.0x body size) | `signalx_native` | Lower Wick > 2.0 * Body and Close > Open (Bullish wick rejection) | Upper Wick > 2.0 * Body and Close < Open (Bearish wick rejection) |
@@ -46,17 +45,9 @@
 | `CDL025_signal` | `cdl_break_retest_signal` | Break and Retest of 10-period High/Low extremes | `signalx_native` | Close[1] breaks 10-bar High and current bar pulls back and holds above the level | Close[1] breaks 10-bar Low and current bar bounces and stays below the level |
 | `CDL026_signal` | `cdl_trend_exhaustion_signal` | Trend Exhaustion (Counter-trend reaction after 3-bar directional move) | `signalx_native` | Close > Close[1] after 2 prior lower closes (Bullish exhaustion bounce) | Close < Close[1] after 2 prior higher closes (Bearish exhaustion pullback) |
 | `CDL027_signal` | `cdl_final_push_signal` | Final Push (Higher/lower close on diminishing volume) | `signalx_native` | Close > Close[1] > Close[2] on declining Volume (Bullish exhaustion push) | Close < Close[1] < Close[2] on declining Volume (Bearish exhaustion push) |
-| `CDL028_signal` | `cdl_fvg_bullish_mitigation_signal` | Fair Value Gap (FVG) Bullish Mitigation & Invalidation | `signalx_native` | Low retraces into Bullish FVG [High[t-2], Low[t]] zone and Close > Open | Close breaks below Bullish FVG bottom High[t-2] |
-| `CDL029_signal` | `cdl_fvg_bearish_mitigation_signal` | Fair Value Gap (FVG) Bearish Mitigation & Invalidation | `signalx_native` | Close breaks above Bearish FVG top Low[t-2] | High retraces into Bearish FVG [High[t], Low[t-2]] zone and Close < Open |
-| `CDL030_signal` | `cdl_order_block_retest_signal` | Order Block (OB) Retest and Mitigation | `signalx_native` | Price retraces into Bullish OB body with Close > Open | Price retraces into Bearish OB body with Close < Open |
-| `CDL031_signal` | `cdl_break_of_structure_signal` | Break of Structure (BOS) aligned with trend filter | `signalx_native` | Close > 10-bar High and SMA20 > SMA50 (Bullish BOS) | Close < 10-bar Low and SMA20 < SMA50 (Bearish BOS) |
-| `CDL032_signal` | `cdl_change_of_character_signal` | Change of Character (CHoCH) structural trend reversal | `signalx_native` | Close > 5-bar High when prior 10-bar regime had SMA20 < SMA50 | Close < 5-bar Low when prior 10-bar regime had SMA20 > SMA50 |
-| `CDL033_signal` | `cdl_judas_swing_signal` | Judas Swing (False breakout stop-hunt with reversal close) | `signalx_native` | Low < 5-bar Low and Close > Open in upper half of bar (Bullish Judas Swing) | High > 5-bar High and Close < Open in lower half of bar (Bearish Judas Swing) |
-| `CDL034_signal` | `cdl_inducement_sweep_signal` | Inducement Sweep (Minor extreme sweep with >=50% wick rejection) | `signalx_native` | Low < Low[1] with lower wick >= 50% range and Close > Open | High > High[1] with upper wick >= 50% range and Close < Open |
 | `CDL035_signal` | `cdl_thrust_bar_signal` | Thrust Bar (Body >= 75% range and >= 1.8x SMA20 body) | `signalx_native` | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close > Open (Bullish thrust) | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close < Open (Bearish thrust) |
 | `CDL036_signal` | `cdl_narrow_range_7_breakout_signal` | Narrow Range 7 (NR7) volatility compression breakout | `signalx_native` | Close breaks above High of NR7 bar (Bullish NR7 breakout) | Close breaks below Low of NR7 bar (Bearish NR7 breakdown) |
 | `CDL037_signal` | `cdl_wide_range_reversal_signal` | Wide Range Reversal (Range >= 2.5x SMA20 range with extreme close) | `signalx_native` | Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar | Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar |
-| `CDL038_signal` | `cdl_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
 
 ## Composite Signals (13 Signals)
 
@@ -120,6 +111,22 @@
 | `MOM038_signal` | `mom_demarker_indicator_cross_signal` | Tom DeMarker Indicator (DeM 14) 0.30/0.70 threshold crossover | `signalx_native` | DeMarker 14 crosses above 0.30 from oversold zone | DeMarker 14 crosses below 0.70 from overbought zone |
 | `MOM039_signal` | `mom_afternoon_open_breakout_signal` | VN30F1M 5m afternoon session open (13:00-13:30) momentum breakout above/below morning range | `signalx_native` | Close in afternoon open breaks above morning session high (bullish afternoon open breakout) | Close in afternoon open breaks below morning session low (bearish afternoon open breakdown) |
 
+## SMC Signals (11 Signals)
+
+| Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `SMC001_signal` | `smc_fvg_bullish_mitigation_signal` | Bullish Fair Value Gap (FVG) mitigation & retest | `signalx_native` | Price retraces into bullish FVG zone (l <= fvg_top and c >= fvg_bottom with bullish close) | Price breaks below bullish FVG bottom (invalidation) |
+| `SMC002_signal` | `smc_fvg_bearish_mitigation_signal` | Bearish Fair Value Gap (FVG) mitigation & retest | `signalx_native` | Price retraces into bearish FVG zone (h >= fvg_bottom and c <= fvg_top with bearish close) | Price breaks above bearish FVG top (invalidation) |
+| `SMC003_signal` | `smc_order_block_retest_signal` | Bullish / Bearish Order Block (OB) formation and retest | `signalx_native` | Price retests bullish OB body and closes bullish | Price retests bearish OB body and closes bearish |
+| `SMC004_signal` | `smc_break_of_structure_signal` | Break of Structure (BOS) trend continuation | `signalx_native` | Close breaks 10-bar high with SMA20 > SMA50 (bullish continuation) | Close breaks 10-bar low with SMA20 < SMA50 (bearish continuation) |
+| `SMC005_signal` | `smc_change_of_character_signal` | Change of Character (CHoCH) structural trend reversal | `signalx_native` | Close breaks 5-bar high after sustained bearish regime (bullish reversal) | Close breaks 5-bar low after sustained bullish regime (bearish reversal) |
+| `SMC006_signal` | `smc_market_structure_break_signal` | Market Structure Break (MSB) higher high / lower low breakout | `signalx_native` | Close breaks recent high after lower low (bullish market structure break) | Close breaks recent low after higher high (bearish market structure break) |
+| `SMC007_signal` | `smc_liquidity_sweep_signal` | 5-bar high/low liquidity sweep with close back inside | `signalx_native` | Low < 5-bar min but Close > 5-bar min (Bullish liquidity sweep) | High > 5-bar max but Close < 5-bar max (Bearish liquidity sweep) |
+| `SMC008_signal` | `smc_equal_high_low_sweep_signal` | Equal Highs / Equal Lows (EQH/EQL) liquidity sweep | `signalx_native` | Equal low swept and Close > previous Low (Bullish equal low sweep) | Equal high swept and Close < previous High (Bearish equal high sweep) |
+| `SMC009_signal` | `smc_judas_swing_signal` | ICT Judas Swing false opening breakout & reversal | `signalx_native` | Low sweeps 5-bar low then closes above midpoint and open (Bullish Judas Swing) | High sweeps 5-bar high then closes below midpoint and open (Bearish Judas Swing) |
+| `SMC010_signal` | `smc_inducement_sweep_signal` | Inducement (IDM) minor liquidity sweep & wick rejection | `signalx_native` | Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement) | High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement) |
+| `SMC011_signal` | `smc_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
+
 ## Statistical Signals (20 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
@@ -145,7 +152,7 @@
 | `STA019_signal` | `stat_variance_ratio_test_signal` | Lo-MacKinlay Variance Ratio Test (q=5, 30-period, VR > 1.25 trending structure) | `signalx_native` | Variance Ratio > 1.25 and ROC5 > 0 (Trending bullish market structure) | Variance Ratio > 1.25 and ROC5 < 0 (Trending bearish market structure) |
 | `STA020_signal` | `stat_rolling_skewness_reversal_signal` | 20-period Rolling Return Skewness Reversal (Skew < -1.5 panic absorption / > +1.5 euphoria exhaustion) | `signalx_native` | Return Skewness 20 < -1.50 and Close > Close[1] (Panic selling absorption reversal buy) | Return Skewness 20 > +1.50 and Close < Close[1] (Euphoria exhaustion reversal sell) |
 
-## Trend Signals (53 Signals)
+## Trend Signals (52 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -182,7 +189,6 @@
 | `TRD031_signal` | `trend_trix_cross_15_signal` | TRIX (15 period) oscillator crosses its 9-period signal line | `signalx_native` | TRIX 15 crosses above TRIX signal line | TRIX 15 crosses below TRIX signal line |
 | `TRD032_signal` | `trend_kama_reversal_10_signal` | Kaufman Adaptive Moving Average (KAMA 10) slope inflection reversal | `pandas_ta` | KAMA 10 hooks upwards after a downward slope | KAMA 10 hooks downwards after an upward slope |
 | `TRD033_signal` | `trend_tma_cross_10_signal` | Triangular Moving Average (TMA 10) price crossover | `signalx_native` | Close crosses above TMA 10 | Close crosses below TMA 10 |
-| `TRD034_signal` | `trend_market_structure_break_signal` | Market Structure Break (MSB) higher high / lower low breakout | `signalx_native` | Close breaks above 10-bar recent high after making lower low | Close breaks below 10-bar recent low after making higher high |
 | `TRD035_signal` | `trend_ma_alignment_20_50_signal` | Moving Average Alignment (Close > SMA50 and SMA20 > SMA50) | `signalx_native` | Close > SMA50 and SMA20 > SMA50 (Bullish trend alignment) | Close < SMA50 and SMA20 < SMA50 (Bearish trend alignment) |
 | `TRD036_signal` | `trend_pullback_sma20_50_signal` | Pullback to SMA20 within established higher-timeframe trend | `signalx_native` | Close dips below SMA20 while SMA20 > SMA50 (Bullish pullback) | Close rallies above SMA20 while SMA20 < SMA50 (Bearish pullback) |
 | `TRD037_signal` | `trend_micro_trend_3_signal` | 3-bar micro trend persistence | `signalx_native` | 3 consecutive higher closes (Close > Close[1] > Close[2]) | 3 consecutive lower closes (Close < Close[1] < Close[2]) |

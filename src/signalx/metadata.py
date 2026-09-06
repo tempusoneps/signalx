@@ -122,7 +122,7 @@ def to_semantic_names(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _initialize_default_catalog() -> None:
-    """Populate the default catalog with 100+ standard trading signals across all 7 categories."""
+    """Populate the default catalog with 100+ standard trading signals across all 8 categories."""
     # -------------------------------------------------------------------------
     # 1. TREND SIGNALS (30 signals)
     # -------------------------------------------------------------------------
@@ -1360,7 +1360,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 5. CANDLESTICK SIGNALS (38 signals)
+    # 5. CANDLESTICK SIGNALS (28 signals)
     # -------------------------------------------------------------------------
     cdl_definitions = [
         (
