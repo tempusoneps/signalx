@@ -369,7 +369,9 @@ def _calc_klinger_oscillator(
                 dm[i] if not np.isnan(dm[i]) else 0.0
             )
 
-    ratio = np.where(cm != 0, dm / cm, 0.0)
+    valid = (cm != 0.0) & ~np.isnan(dm) & ~np.isnan(cm)
+    ratio = np.zeros(n, dtype=float)
+    np.divide(dm, cm, out=ratio, where=valid)
     vf = v_arr * np.abs(2.0 * ratio - 1.0) * trend * 100.0
     vf_s = pd.Series(vf, index=close.index)
     kvo = vf_s.ewm(span=34, adjust=False).mean() - vf_s.ewm(span=55, adjust=False).mean()
@@ -682,7 +684,8 @@ def _calc_rvol_time_bucket(
     valid = (
         ~np.isnan(v_arr) & ~np.isnan(m_arr) & (m_arr > 0.0) & ~np.isnan(o_arr) & ~np.isnan(c_arr)
     )
-    rvol = np.where(valid, v_arr / m_arr, 0.0)
+    rvol = np.zeros(len(close), dtype=float)
+    np.divide(v_arr, m_arr, out=rvol, where=valid)
 
     buy = valid & (rvol >= 2.0) & (c_arr > o_arr)
     sell = valid & (rvol >= 2.0) & (c_arr < o_arr)
