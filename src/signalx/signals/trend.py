@@ -43,7 +43,6 @@ TREND_SIGNAL_COLUMNS = [
     "trend_trix_cross_15_signal",
     "trend_kama_reversal_10_signal",
     "trend_tma_cross_10_signal",
-    "trend_market_structure_break_signal",
     "trend_ma_alignment_20_50_signal",
     "trend_pullback_sma20_50_signal",
     "trend_micro_trend_3_signal",
@@ -336,39 +335,6 @@ def _calc_tma_cross(close: pd.Series, length: int = 10) -> pd.Series:
     n2 = length // 2 + 1
     tma = close.rolling(n1, min_periods=1).mean().rolling(n2, min_periods=1).mean()
     return _crossover_signal(close, tma)
-
-
-def _calc_market_structure_break(
-    high: pd.Series, low: pd.Series, close: pd.Series, lookback: int = 10
-) -> pd.Series:
-    """Calculate Market Structure Break (MSB) signal."""
-    recent_high = high.rolling(lookback).max().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    recent_low = low.rolling(lookback).min().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    recent_high_prev = (
-        high.rolling(lookback).max().shift(lookback + 1).to_numpy(dtype=float, na_value=np.nan)
-    )
-    recent_low_prev = (
-        low.rolling(lookback).min().shift(lookback + 1).to_numpy(dtype=float, na_value=np.nan)
-    )
-
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = (
-        ~np.isnan(c)
-        & ~np.isnan(recent_high)
-        & ~np.isnan(recent_low)
-        & ~np.isnan(recent_high_prev)
-        & ~np.isnan(recent_low_prev)
-    )
-    bull = valid & (c > recent_high) & (recent_low < recent_low_prev)
-    bear = valid & (c < recent_low) & (recent_high > recent_high_prev)
-    hold = valid & ~bull & ~bear
-
-    conds = [bull, bear, hold]
-    choices = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    return pd.Series(
-        np.select(conds, choices, default=SignalState.NONE), index=close.index, dtype=str
-    )
 
 
 def _calc_tii(close: pd.Series, length: int = 14, sma_length: int = 20) -> pd.Series:
@@ -767,7 +733,7 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 53 columns ending with '_signal', with values in
+        DataFrame containing 52 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -898,13 +864,7 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
         signals["trend_tma_cross_10_signal"] = _calc_tma_cross(close, length=10)
         pbar.update(1)
 
-        # 13. Market Structure Break (MSB) (1)
-        signals["trend_market_structure_break_signal"] = _calc_market_structure_break(
-            high, low, close, lookback=10
-        )
-        pbar.update(1)
-
-        # 14. MA Alignment (20, 50) (1)
+        # 13. MA Alignment (20, 50) (1)
         signals["trend_ma_alignment_20_50_signal"] = _calc_ma_alignment(close, sma20, sma50)
         pbar.update(1)
 

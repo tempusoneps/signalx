@@ -7,24 +7,16 @@ import pytest
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.candlestick import (
     CANDLESTICK_SIGNAL_COLUMNS,
-    _calc_break_of_structure,
-    _calc_change_of_character,
     _calc_consecutive_directional,
     _calc_doji_reversal,
     _calc_engulfing,
-    _calc_fvg_bearish_mitigation,
-    _calc_fvg_bullish_mitigation,
     _calc_hammer_star,
     _calc_harami,
-    _calc_inducement_sweep,
     _calc_inside_bar,
-    _calc_judas_swing,
     _calc_marubozu,
     _calc_morning_evening_star,
     _calc_narrow_range_7_breakout,
-    _calc_order_block_retest,
     _calc_outside_bar,
-    _calc_pdh_pdl_sweep,
     _calc_piercing_darkcloud,
     _calc_pinbar,
     _calc_three_soldiers_crows,
@@ -60,23 +52,23 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_CANDLESTICK_SIGNALS = CANDLESTICK_SIGNAL_COLUMNS
 
 
-def test_candlestick_signals_all_38_columns_present():
-    """Verify generate_candlestick_signals produces exactly 38 candlestick signals."""
+def test_candlestick_signals_all_28_columns_present():
+    """Verify generate_candlestick_signals produces exactly 28 candlestick signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_candlestick_signals(df)
 
-    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 38
+    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 28
     assert EXPECTED_CANDLESTICK_SIGNALS == CANDLESTICK_SIGNAL_COLUMNS
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 38
+    assert len(res.columns) == 28
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_CANDLESTICK_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
 
-    assert "cdl_pdh_pdl_sweep_signal" in res.columns
+    assert "cdl_engulfing_signal" in res.columns
 
 
 def test_candlestick_signals_all_states_valid():
@@ -494,167 +486,6 @@ def test_tweezer_tops_bottoms_signal_direct():
     assert sig.iloc[3] == SignalState.SELL
 
 
-def test_fvg_bullish_mitigation_signal_direct():
-    """Verify Bullish FVG creation and mitigation / invalidation."""
-    # Bar 0: High = 100, Low = 95
-    # Bar 1: Strong up move Open = 101, Close = 108, High = 109, Low = 101
-    # Bar 2: Open = 108, Close = 112, High = 114, Low = 105 (Low > High[0]=100 => Bullish FVG [100, 105] created)
-    # Bar 3: Retrace into [100, 105], Open = 104, Close = 106, High = 107, Low = 102 (Close > Open => BUY)
-    # Bar 4: Breakdown below 100, Open = 103, Close = 98, High = 104, Low = 97 => SELL
-    df = pd.DataFrame(
-        {
-            "open": [96.0, 101.0, 108.0, 104.0, 103.0],
-            "high": [100.0, 109.0, 114.0, 107.0, 104.0],
-            "low": [95.0, 101.0, 105.0, 102.0, 97.0],
-            "close": [99.0, 108.0, 112.0, 106.0, 98.0],
-            "volume": [1000.0] * 5,
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_fvg_bullish_mitigation_signal"]
-    assert sig.iloc[3] == SignalState.BUY
-    assert sig.iloc[4] == SignalState.SELL
-
-
-def test_fvg_bearish_mitigation_signal_direct():
-    """Verify Bearish FVG creation and mitigation / invalidation."""
-    # Bar 0: High = 115, Low = 110
-    # Bar 1: Strong down move Open = 109, Close = 102, High = 109, Low = 101
-    # Bar 2: Open = 102, Close = 98, High = 104, Low = 96 (High < Low[0]=110 => Bearish FVG [104, 110] created)
-    # Bar 3: Retrace into [104, 110], Open = 108, Close = 105, High = 109, Low = 104 (Close < Open => SELL)
-    # Bar 4: Breakout above 110, Open = 107, Close = 113, High = 114, Low = 106 => BUY
-    df = pd.DataFrame(
-        {
-            "open": [114.0, 109.0, 102.0, 108.0, 107.0],
-            "high": [115.0, 109.0, 104.0, 109.0, 114.0],
-            "low": [110.0, 101.0, 96.0, 104.0, 106.0],
-            "close": [111.0, 102.0, 98.0, 105.0, 113.0],
-            "volume": [1000.0] * 5,
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_fvg_bearish_mitigation_signal"]
-    assert sig.iloc[3] == SignalState.SELL
-    assert sig.iloc[4] == SignalState.BUY
-
-
-def test_order_block_retest_signal_direct():
-    """Verify Bullish and Bearish Order Block formation and retest."""
-    # Bullish OB: Bar 0 is red (Open 102, Close 98). Bars 1, 2, 3 are green.
-    # Bar 4: Retraces into [98, 102] with green close (Open 99, Close 101) -> BUY
-    df = pd.DataFrame(
-        {
-            "open": [102.0, 99.0, 104.0, 108.0, 99.0],
-            "high": [103.0, 104.0, 108.0, 112.0, 102.0],
-            "low": [97.0, 98.0, 103.0, 107.0, 98.5],
-            "close": [98.0, 103.0, 107.0, 111.0, 101.0],
-            "volume": [1000.0] * 5,
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_order_block_retest_signal"]
-    assert sig.iloc[4] == SignalState.BUY
-
-
-def test_break_of_structure_signal_direct():
-    """Verify BOS breakout with trend alignment."""
-    # 60 bars uptrend so SMA20 > SMA50
-    np.random.seed(42)
-    closes = [100.0 + i * 0.5 for i in range(55)]
-    # Bar 54 has max high of past 10 bars
-    # Bar 55 breaks above max high of past 10 bars with SMA20 > SMA50
-    highs = [c + 1.0 for c in closes]
-    lows = [c - 1.0 for c in closes]
-    opens = [c - 0.2 for c in closes]
-    # Breakout bar
-    opens.append(closes[-1])
-    closes.append(highs[-1] + 2.0)
-    highs.append(closes[-1] + 0.5)
-    lows.append(opens[-1] - 0.5)
-
-    df = pd.DataFrame(
-        {
-            "open": opens,
-            "high": highs,
-            "low": lows,
-            "close": closes,
-            "volume": [1000.0] * len(opens),
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_break_of_structure_signal"]
-    assert sig.iloc[-1] == SignalState.BUY
-
-
-def test_change_of_character_signal_direct():
-    """Verify CHoCH structure break against prior trend regime."""
-    # Downtrend for 55 bars so SMA20 < SMA50
-    closes = [200.0 - i * 0.5 for i in range(55)]
-    highs = [c + 1.0 for c in closes]
-    lows = [c - 1.0 for c in closes]
-    opens = [c + 0.2 for c in closes]
-
-    # Bar 55 breaks above 5-bar high
-    opens.append(closes[-1])
-    max_h5 = max(highs[-5:])
-    closes.append(max_h5 + 2.0)
-    highs.append(closes[-1] + 0.5)
-    lows.append(opens[-1] - 0.5)
-
-    df = pd.DataFrame(
-        {
-            "open": opens,
-            "high": highs,
-            "low": lows,
-            "close": closes,
-            "volume": [1000.0] * len(opens),
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_change_of_character_signal"]
-    assert sig.iloc[-1] == SignalState.BUY
-
-
-def test_judas_swing_signal_direct():
-    """Verify Judas Swing false breakout with reversal."""
-    # 5 bars baseline
-    df = pd.DataFrame(
-        {
-            "open": [100.0, 101.0, 102.0, 101.0, 100.0, 97.0, 105.0],
-            "high": [103.0, 103.0, 104.0, 103.0, 102.0, 102.0, 106.0],
-            "low": [98.0, 99.0, 100.0, 99.0, 98.0, 94.0, 99.0],  # Bar 5 low=94 < min_5 (98)
-            "close": [101.0, 102.0, 101.0, 100.0, 99.0, 101.5, 96.0],  # Bar 5 close in upper half
-            "volume": [1000.0] * 7,
-        }
-    )
-    # Bar 5: Low = 94 < min(Low5)=98, Close=101.5 > Open=97 and Close > (102+94)/2=98 -> BUY
-    # Bar 6: High = 106 > max(High5)=104, Close=96 < Open=105 and Close < (106+99)/2=102.5 -> SELL
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_judas_swing_signal"]
-    assert sig.iloc[5] == SignalState.BUY
-    assert sig.iloc[6] == SignalState.SELL
-
-
-def test_inducement_sweep_signal_direct():
-    """Verify Inducement Sweep minor liquidity grab."""
-    # Bar 0: High = 105, Low = 95
-    # Bar 1: Low = 93 < Low[0], Lower wick = 98 - 93 = 5, Range = 103 - 93 = 10 (>= 50%), Close 102 > Open 98 -> BUY
-    # Bar 2: High = 108 > High[1], Upper wick = 108 - 103 = 5, Range = 108 - 98 = 10 (>= 50%), Close 99 < Open 103 -> SELL
-    df = pd.DataFrame(
-        {
-            "open": [100.0, 98.0, 103.0],
-            "high": [105.0, 103.0, 108.0],
-            "low": [95.0, 93.0, 98.0],
-            "close": [102.0, 102.0, 99.0],
-            "volume": [1000.0] * 3,
-        }
-    )
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_inducement_sweep_signal"]
-    assert sig.iloc[1] == SignalState.BUY
-    assert sig.iloc[2] == SignalState.SELL
-
-
 def test_thrust_bar_signal_direct():
     """Verify Thrust Bar large body directional candle."""
     # 20 bars small body (body = 1.0)
@@ -759,52 +590,6 @@ def test_wide_range_reversal_signal_direct():
     assert sig.iloc[21] == SignalState.SELL
 
 
-def test_pdh_pdl_sweep_signal_direct():
-    """Verify Prior Day High / Low (PDH/PDL) liquidity sweep signal logic and zero lookahead bias."""
-    dates = [
-        "2026-09-01 09:00",
-        "2026-09-01 09:05",
-        "2026-09-01 09:10",
-        "2026-09-01 09:15",
-        "2026-09-01 09:20",
-    ] + [
-        "2026-09-02 09:00",
-        "2026-09-02 09:05",
-        "2026-09-02 09:10",
-        "2026-09-02 09:15",
-        "2026-09-02 09:20",
-    ]
-    df = pd.DataFrame(
-        {
-            "date": pd.to_datetime(dates),
-            "open": [94.0, 95.0, 96.0, 97.0, 98.0, 95.0, 91.0, 99.0, 100.0, 89.0],
-            "high": [96.0, 98.0, 100.0, 99.0, 98.0, 97.0, 93.0, 102.0, 103.0, 90.0],
-            "low": [92.0, 90.0, 95.0, 94.0, 93.0, 93.0, 88.0, 97.0, 99.0, 86.0],
-            "close": [95.0, 96.0, 97.0, 98.0, 97.0, 96.0, 92.0, 98.0, 101.0, 87.0],
-            "volume": [1000.0] * 10,
-        }
-    )
-
-    res = generate_candlestick_signals(df)
-    sig = res["cdl_pdh_pdl_sweep_signal"]
-
-    # Session 1 (bars 0..4) has no prior session -> MUST BE ALL NONE (zero lookahead!)
-    for i in range(5):
-        assert sig.iloc[i] == SignalState.NONE, f"Session 1 bar {i} should be NONE"
-
-    # Session 2: PDH is 100.0, PDL is 90.0
-    # Bar 5 (index 5): within range -> NONE
-    assert sig.iloc[5] == SignalState.NONE
-    # Bar 6 (index 6): low 88 < 90, close 92 > 90, close 92 > open 91 -> BUY
-    assert sig.iloc[6] == SignalState.BUY
-    # Bar 7 (index 7): high 102 > 100, close 98 < 100, close 98 < open 99 -> SELL
-    assert sig.iloc[7] == SignalState.SELL
-    # Bar 8 (index 8): high 103 > 100, close 101 > 100 -> NONE
-    assert sig.iloc[8] == SignalState.NONE
-    # Bar 9 (index 9): low 86 < 90, close 87 < 90 -> NONE
-    assert sig.iloc[9] == SignalState.NONE
-
-
 def test_helpers_edge_cases():
     """Verify edge case handling in helper functions."""
     empty_s = pd.Series([], dtype=float)
@@ -847,18 +632,9 @@ def test_helpers_edge_cases():
     res_tweezer_empty = _calc_tweezer_tops_bottoms(empty_s, empty_s, empty_s, empty_s)
     assert len(res_tweezer_empty) == 0
 
-    # New 10 helpers
-    assert len(_calc_fvg_bullish_mitigation(empty_s, empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_fvg_bearish_mitigation(empty_s, empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_order_block_retest(empty_s, empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_break_of_structure(empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_change_of_character(empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_judas_swing(empty_s, empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_inducement_sweep(empty_s, empty_s, empty_s, empty_s)) == 0
     assert len(_calc_thrust_bar(empty_s, empty_s, empty_s, empty_s)) == 0
     assert len(_calc_narrow_range_7_breakout(empty_s, empty_s, empty_s)) == 0
     assert len(_calc_wide_range_reversal(empty_s, empty_s, empty_s)) == 0
-    assert len(_calc_pdh_pdl_sweep(None, empty_s, empty_s, empty_s, empty_s)) == 0
 
 
 def test_signals_package_export():

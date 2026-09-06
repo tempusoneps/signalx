@@ -33,14 +33,14 @@ EXPECTED_TREND_SIGNALS = TREND_SIGNAL_COLUMNS
 
 
 def test_trend_signals_all_columns_present():
-    """Verify generate_trend_signals produces exactly the expected 53 trend signals."""
+    """Verify generate_trend_signals produces exactly the expected 52 trend signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_trend_signals(df)
 
-    assert len(EXPECTED_TREND_SIGNALS) == 53
+    assert len(EXPECTED_TREND_SIGNALS) == 52
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 53
+    assert len(res.columns) == 52
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_TREND_SIGNALS:
@@ -83,7 +83,7 @@ def test_trend_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 53
+    assert len(res.columns) == 52
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -98,7 +98,7 @@ def test_trend_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 53
+    assert len(res.columns) == 52
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -112,7 +112,7 @@ def test_trend_signals_normalization():
     res = generate_trend_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 53
+    assert len(res.columns) == 52
 
 
 def test_trend_signals_missing_columns():
