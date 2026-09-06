@@ -5,7 +5,6 @@ import pandas as pd
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
-from signalx.signals.session_helper import extract_session_context
 from signalx.utils import normalize_ohlcv
 
 CANDLESTICK_SIGNAL_COLUMNS = [
@@ -25,8 +24,6 @@ CANDLESTICK_SIGNAL_COLUMNS = [
     "cdl_tweezer_tops_bottoms_signal",
     "cdl_couple_cs_signal",
     "cdl_fakey_pattern_signal",
-    "cdl_liquidity_sweep_signal",
-    "cdl_equal_high_low_sweep_signal",
     "cdl_gap_up_down_signal",
     "cdl_body_size_expansion_signal",
     "cdl_wick_rejection_signal",
@@ -36,17 +33,9 @@ CANDLESTICK_SIGNAL_COLUMNS = [
     "cdl_break_retest_signal",
     "cdl_trend_exhaustion_signal",
     "cdl_final_push_signal",
-    "cdl_fvg_bullish_mitigation_signal",
-    "cdl_fvg_bearish_mitigation_signal",
-    "cdl_order_block_retest_signal",
-    "cdl_break_of_structure_signal",
-    "cdl_change_of_character_signal",
-    "cdl_judas_swing_signal",
-    "cdl_inducement_sweep_signal",
     "cdl_thrust_bar_signal",
     "cdl_narrow_range_7_breakout_signal",
     "cdl_wide_range_reversal_signal",
-    "cdl_pdh_pdl_sweep_signal",
 ]
 
 
@@ -690,47 +679,6 @@ def _calc_fakey_pattern(
     return pd.Series(res, index=open_p.index, dtype=str)
 
 
-def _calc_liquidity_sweep(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-    """Calculate Liquidity Sweep (sweep of 5-bar high/low with close back inside)."""
-    low_5_prev = low.rolling(5).min().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    high_5_prev = high.rolling(5).max().shift(1).to_numpy(dtype=float, na_value=np.nan)
-
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = ~np.isnan(c) & ~np.isnan(low_5_prev) & ~np.isnan(high_5_prev)
-
-    bull_sweep = valid & (l_arr < low_5_prev) & (c > low_5_prev)
-    bear_sweep = valid & (h > high_5_prev) & (c < high_5_prev)
-
-    condlist = [bull_sweep, bear_sweep, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_equal_high_low_sweep(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-    """Calculate Equal High / Low liquidity sweep signal."""
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    l_prev = low.shift(1).to_numpy(dtype=float, na_value=np.nan)
-    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
-    h_prev = high.shift(1).to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = ~np.isnan(c) & ~np.isnan(l_prev) & ~np.isnan(h_prev)
-    equal_low = valid & (np.abs(l_arr - l_prev) <= (0.001 * c))
-    equal_high = valid & (np.abs(h_arr - h_prev) <= (0.001 * c))
-
-    bull_equal = equal_low & (c > l_prev)
-    bear_equal = equal_high & (c < h_prev)
-
-    condlist = [bull_equal, bear_equal, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
 def _calc_gap_up_down(open_p: pd.Series, high: pd.Series, low: pd.Series) -> pd.Series:
     """Calculate Opening Gap Up / Down signal."""
     o = open_p.to_numpy(dtype=float, na_value=np.nan)
@@ -906,268 +854,6 @@ def _calc_final_push(close: pd.Series, volume: pd.Series) -> pd.Series:
     return pd.Series(res, index=close.index, dtype=str)
 
 
-def _calc_fvg_bullish_mitigation(
-    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
-) -> pd.Series:
-    """Calculate Bullish Fair Value Gap (FVG) mitigation and breakdown signal."""
-    n = len(open_p)
-    if n == 0:
-        return pd.Series(dtype=str, index=open_p.index)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    # Bullish FVG created when Low > High[2]
-    fvg_created = low > high.shift(2)
-    fvg_top = low.where(fvg_created).shift(1).ffill().to_numpy(dtype=float, na_value=np.nan)
-    fvg_bottom = (
-        high.shift(2).where(fvg_created).shift(1).ffill().to_numpy(dtype=float, na_value=np.nan)
-    )
-
-    valid = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(fvg_top) & ~np.isnan(fvg_bottom)
-
-    retrace = valid & (l_arr <= fvg_top) & (c >= fvg_bottom) & (c > o)
-    breakdown = valid & (c < fvg_bottom)
-
-    condlist = [retrace, breakdown, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_fvg_bearish_mitigation(
-    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
-) -> pd.Series:
-    """Calculate Bearish Fair Value Gap (FVG) mitigation and breakout signal."""
-    n = len(open_p)
-    if n == 0:
-        return pd.Series(dtype=str, index=open_p.index)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    # Bearish FVG created when High < Low[2]
-    fvg_created = high < low.shift(2)
-    fvg_top = (
-        low.shift(2).where(fvg_created).shift(1).ffill().to_numpy(dtype=float, na_value=np.nan)
-    )
-    fvg_bottom = high.where(fvg_created).shift(1).ffill().to_numpy(dtype=float, na_value=np.nan)
-
-    valid = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(fvg_top) & ~np.isnan(fvg_bottom)
-
-    retrace = valid & (h >= fvg_bottom) & (c <= fvg_top) & (c < o)
-    breakout = valid & (c > fvg_top)
-
-    condlist = [retrace, breakout, valid]
-    choicelist = [SignalState.SELL, SignalState.BUY, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_order_block_retest(
-    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
-) -> pd.Series:
-    """Calculate Bullish and Bearish Order Block (OB) formation and retest signal."""
-    n = len(open_p)
-    if n == 0:
-        return pd.Series(dtype=str, index=open_p.index)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    # Bullish OB: bar i-3 red, bars i-2, i-1, i green
-    bull_ob_created = (
-        (close.shift(3) < open_p.shift(3))
-        & (close.shift(2) > open_p.shift(2))
-        & (close.shift(1) > open_p.shift(1))
-        & (close > open_p)
-    )
-    ob_bull_top = (
-        open_p.shift(3)
-        .where(bull_ob_created)
-        .shift(1)
-        .ffill()
-        .to_numpy(dtype=float, na_value=np.nan)
-    )
-    ob_bull_bottom = (
-        close.shift(3)
-        .where(bull_ob_created)
-        .shift(1)
-        .ffill()
-        .to_numpy(dtype=float, na_value=np.nan)
-    )
-
-    # Bearish OB: bar i-3 green, bars i-2, i-1, i red
-    bear_ob_created = (
-        (close.shift(3) > open_p.shift(3))
-        & (close.shift(2) < open_p.shift(2))
-        & (close.shift(1) < open_p.shift(1))
-        & (close < open_p)
-    )
-    ob_bear_top = (
-        close.shift(3)
-        .where(bear_ob_created)
-        .shift(1)
-        .ffill()
-        .to_numpy(dtype=float, na_value=np.nan)
-    )
-    ob_bear_bottom = (
-        open_p.shift(3)
-        .where(bear_ob_created)
-        .shift(1)
-        .ffill()
-        .to_numpy(dtype=float, na_value=np.nan)
-    )
-
-    valid_bull = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(ob_bull_top) & ~np.isnan(ob_bull_bottom)
-    valid_bear = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(ob_bear_top) & ~np.isnan(ob_bear_bottom)
-    valid = ~np.isnan(o) & ~np.isnan(c)
-
-    bull_retest = valid_bull & (l_arr <= ob_bull_top) & (c >= ob_bull_bottom) & (c > o)
-    bear_retest = valid_bear & (h >= ob_bear_bottom) & (c <= ob_bear_top) & (c < o)
-
-    condlist = [bull_retest, bear_retest, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_break_of_structure(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-    """Calculate Break of Structure (BOS) aligned with trend filter."""
-    n = len(close)
-    if n == 0:
-        return pd.Series(dtype=str, index=close.index)
-
-    high_10_prev = high.rolling(10).max().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    low_10_prev = low.rolling(10).min().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    sma20 = close.rolling(20, min_periods=20).mean().to_numpy(dtype=float, na_value=np.nan)
-    sma50 = close.rolling(50, min_periods=50).mean().to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = (
-        ~np.isnan(c)
-        & ~np.isnan(high_10_prev)
-        & ~np.isnan(low_10_prev)
-        & ~np.isnan(sma20)
-        & ~np.isnan(sma50)
-    )
-
-    bull_bos = valid & (c > high_10_prev) & (sma20 > sma50)
-    bear_bos = valid & (c < low_10_prev) & (sma20 < sma50)
-
-    condlist = [bull_bos, bear_bos, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_change_of_character(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-    """Calculate Change of Character (CHoCH) structural trend reversal signal."""
-    n = len(close)
-    if n == 0:
-        return pd.Series(dtype=str, index=close.index)
-
-    high_5_prev = high.rolling(5).max().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    low_5_prev = low.rolling(5).min().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    sma20 = close.rolling(20, min_periods=20).mean()
-    sma50 = close.rolling(50, min_periods=50).mean()
-
-    bear_ratio = (sma20 < sma50).rolling(10, min_periods=1).mean().shift(1)
-    prev_bear_regime = (bear_ratio >= 0.5).to_numpy(dtype=bool) & ~bear_ratio.isna().to_numpy()
-
-    bull_ratio = (sma20 > sma50).rolling(10, min_periods=1).mean().shift(1)
-    prev_bull_regime = (bull_ratio >= 0.5).to_numpy(dtype=bool) & ~bull_ratio.isna().to_numpy()
-
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-    sma20_arr = sma20.to_numpy(dtype=float, na_value=np.nan)
-    sma50_arr = sma50.to_numpy(dtype=float, na_value=np.nan)
-    valid = (
-        ~np.isnan(c)
-        & ~np.isnan(high_5_prev)
-        & ~np.isnan(low_5_prev)
-        & ~np.isnan(sma20_arr)
-        & ~np.isnan(sma50_arr)
-    )
-
-    bull_choch = valid & (c > high_5_prev) & prev_bear_regime
-    bear_choch = valid & (c < low_5_prev) & prev_bull_regime
-
-    condlist = [bull_choch, bear_choch, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_judas_swing(
-    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
-) -> pd.Series:
-    """Calculate Judas Swing (false breakout stop-hunt with reversal close)."""
-    n = len(open_p)
-    if n == 0:
-        return pd.Series(dtype=str, index=open_p.index)
-
-    low_5_prev = low.rolling(5).min().shift(1).to_numpy(dtype=float, na_value=np.nan)
-    high_5_prev = high.rolling(5).max().shift(1).to_numpy(dtype=float, na_value=np.nan)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(low_5_prev) & ~np.isnan(high_5_prev)
-    midpoint = (h + l_arr) / 2.0
-
-    bull_judas = valid & (l_arr < low_5_prev) & (c > o) & (c > midpoint)
-    bear_judas = valid & (h > high_5_prev) & (c < o) & (c < midpoint)
-
-    condlist = [bull_judas, bear_judas, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
-def _calc_inducement_sweep(
-    open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
-) -> pd.Series:
-    """Calculate Inducement Sweep (minor liquidity sweep with long wick rejection)."""
-    n = len(open_p)
-    if n == 0:
-        return pd.Series(dtype=str, index=open_p.index)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    l_prev = low.shift(1).to_numpy(dtype=float, na_value=np.nan)
-    h_prev = high.shift(1).to_numpy(dtype=float, na_value=np.nan)
-
-    valid = (
-        ~np.isnan(o)
-        & ~np.isnan(h)
-        & ~np.isnan(l_arr)
-        & ~np.isnan(c)
-        & ~np.isnan(l_prev)
-        & ~np.isnan(h_prev)
-    )
-    rng = np.where(valid, h - l_arr, 0.0)
-    lower_wick = np.where(valid, np.minimum(o, c) - l_arr, 0.0)
-    upper_wick = np.where(valid, h - np.maximum(o, c), 0.0)
-
-    has_range = valid & (rng > 0.0)
-    bull_sweep = has_range & (l_arr < l_prev) & (lower_wick >= 0.50 * rng) & (c > o)
-    bear_sweep = has_range & (h > h_prev) & (upper_wick >= 0.50 * rng) & (c < o)
-
-    condlist = [bull_sweep, bear_sweep, valid]
-    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
-    res = np.select(condlist, choicelist, default=SignalState.NONE)
-    return pd.Series(res, index=close.index, dtype=str)
-
-
 def _calc_thrust_bar(
     open_p: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series
 ) -> pd.Series:
@@ -1256,66 +942,8 @@ def _calc_wide_range_reversal(high: pd.Series, low: pd.Series, close: pd.Series)
     return pd.Series(res, index=close.index, dtype=str)
 
 
-def _calc_pdh_pdl_sweep(
-    df: pd.DataFrame | None,
-    open_p: pd.Series,
-    high: pd.Series,
-    low: pd.Series,
-    close: pd.Series,
-) -> pd.Series:
-    """Calculate Prior Day High / Low (PDH/PDL) Liquidity Sweep & Mean-Reversion.
-
-    Prior session PDH = max(High of previous session), PDL = min(Low of previous session).
-    Uses session_id strictly with shift(1) across sessions so that for session 0 / warmup
-    there is no prior session (PDH/PDL is NaN, producing SignalState.NONE) -> Zero lookahead bias.
-
-    Bullish sweep (sweeps PDL): (low < pdl) & (close > pdl) & (close > open) -> SignalState.BUY.
-    Bearish sweep (sweeps PDH): (high > pdh) & (close < pdh) & (close < open) -> SignalState.SELL.
-    Otherwise: SignalState.NONE.
-    """
-    if len(close) == 0:
-        return pd.Series(dtype=str, index=close.index)
-
-    if df is None:
-        df = pd.DataFrame(
-            {"open": open_p, "high": high, "low": low, "close": close},
-            index=close.index,
-        )
-
-    ctx = extract_session_context(df)
-
-    session_high = high.groupby(ctx.session_id, sort=False).max()
-    session_low = low.groupby(ctx.session_id, sort=False).min()
-
-    prior_high = session_high.shift(1)
-    prior_low = session_low.shift(1)
-
-    pdh = ctx.session_id.map(prior_high).to_numpy(dtype=float, na_value=np.nan)
-    pdl = ctx.session_id.map(prior_low).to_numpy(dtype=float, na_value=np.nan)
-
-    o = open_p.to_numpy(dtype=float, na_value=np.nan)
-    h = high.to_numpy(dtype=float, na_value=np.nan)
-    lo = low.to_numpy(dtype=float, na_value=np.nan)
-    c = close.to_numpy(dtype=float, na_value=np.nan)
-
-    valid = (
-        ~np.isnan(o) & ~np.isnan(h) & ~np.isnan(lo) & ~np.isnan(c) & ~np.isnan(pdh) & ~np.isnan(pdl)
-    )
-
-    buy = valid & (lo < pdl) & (c > pdl) & (c > o)
-    sell = valid & (h > pdh) & (c < pdh) & (c < o)
-
-    condlist = [buy, sell]
-    choicelist = [SignalState.BUY, SignalState.SELL]
-    return pd.Series(
-        np.select(condlist, choicelist, default=SignalState.NONE),
-        index=close.index,
-        dtype=str,
-    )
-
-
 def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 38 candlestick and price action signals from OHLCV dataframe.
+    """Generate all 28 candlestick and price action signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -1327,7 +955,7 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 38 columns ending with '_signal', with values in
+        DataFrame containing 28 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1416,100 +1044,54 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
         signals["cdl_fakey_pattern_signal"] = _calc_fakey_pattern(open_p, high, low, close)
         pbar.update(1)
 
-        # 17. Liquidity Sweep (1)
-        signals["cdl_liquidity_sweep_signal"] = _calc_liquidity_sweep(high, low, close)
-        pbar.update(1)
-
-        # 18. Equal High / Low Sweep (1)
-        signals["cdl_equal_high_low_sweep_signal"] = _calc_equal_high_low_sweep(high, low, close)
-        pbar.update(1)
-
-        # 19. Gap Up / Down (1)
+        # 17. Gap Up / Down (1)
         signals["cdl_gap_up_down_signal"] = _calc_gap_up_down(open_p, high, low)
         pbar.update(1)
 
-        # 20. Body Size Expansion (1)
+        # 18. Body Size Expansion (1)
         signals["cdl_body_size_expansion_signal"] = _calc_body_size_expansion(open_p, close)
         pbar.update(1)
 
-        # 21. Wick Rejection (1)
+        # 19. Wick Rejection (1)
         signals["cdl_wick_rejection_signal"] = _calc_wick_rejection(open_p, high, low, close)
         pbar.update(1)
 
-        # 22. Body Direction Agreement (1)
+        # 20. Body Direction Agreement (1)
         signals["cdl_body_direction_signal"] = _calc_body_direction(open_p, close)
         pbar.update(1)
 
-        # 23. Close Strength (1)
+        # 21. Close Strength (1)
         signals["cdl_close_strength_signal"] = _calc_close_strength(open_p, high, low, close)
         pbar.update(1)
 
-        # 24. Price Rejection (1)
+        # 22. Price Rejection (1)
         signals["cdl_price_rejection_signal"] = _calc_price_rejection(open_p, high, low, close)
         pbar.update(1)
 
-        # 25. Break and Retest (1)
+        # 23. Break and Retest (1)
         signals["cdl_break_retest_signal"] = _calc_break_retest(high, low, close)
         pbar.update(1)
 
-        # 26. Trend Exhaustion (1)
+        # 24. Trend Exhaustion (1)
         signals["cdl_trend_exhaustion_signal"] = _calc_trend_exhaustion(close)
         pbar.update(1)
 
-        # 27. Final Push (1)
+        # 25. Final Push (1)
         signals["cdl_final_push_signal"] = _calc_final_push(close, volume)
         pbar.update(1)
 
-        # 28. Bullish FVG Mitigation (1)
-        signals["cdl_fvg_bullish_mitigation_signal"] = _calc_fvg_bullish_mitigation(
-            open_p, high, low, close
-        )
-        pbar.update(1)
-
-        # 29. Bearish FVG Mitigation (1)
-        signals["cdl_fvg_bearish_mitigation_signal"] = _calc_fvg_bearish_mitigation(
-            open_p, high, low, close
-        )
-        pbar.update(1)
-
-        # 30. Order Block Retest (1)
-        signals["cdl_order_block_retest_signal"] = _calc_order_block_retest(
-            open_p, high, low, close
-        )
-        pbar.update(1)
-
-        # 31. Break of Structure (1)
-        signals["cdl_break_of_structure_signal"] = _calc_break_of_structure(high, low, close)
-        pbar.update(1)
-
-        # 32. Change of Character (1)
-        signals["cdl_change_of_character_signal"] = _calc_change_of_character(high, low, close)
-        pbar.update(1)
-
-        # 33. Judas Swing (1)
-        signals["cdl_judas_swing_signal"] = _calc_judas_swing(open_p, high, low, close)
-        pbar.update(1)
-
-        # 34. Inducement Sweep (1)
-        signals["cdl_inducement_sweep_signal"] = _calc_inducement_sweep(open_p, high, low, close)
-        pbar.update(1)
-
-        # 35. Thrust Bar (1)
+        # 26. Thrust Bar (1)
         signals["cdl_thrust_bar_signal"] = _calc_thrust_bar(open_p, high, low, close)
         pbar.update(1)
 
-        # 36. Narrow Range 7 Breakout (1)
+        # 27. Narrow Range 7 Breakout (1)
         signals["cdl_narrow_range_7_breakout_signal"] = _calc_narrow_range_7_breakout(
             high, low, close
         )
         pbar.update(1)
 
-        # 37. Wide Range Reversal (1)
+        # 28. Wide Range Reversal (1)
         signals["cdl_wide_range_reversal_signal"] = _calc_wide_range_reversal(high, low, close)
-        pbar.update(1)
-
-        # 38. Prior Day High / Low Sweep (1)
-        signals["cdl_pdh_pdl_sweep_signal"] = _calc_pdh_pdl_sweep(df_norm, open_p, high, low, close)
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and match index
