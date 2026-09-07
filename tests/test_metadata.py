@@ -65,9 +65,9 @@ def test_signal_metadata_attributes_and_frozen():
 
 
 def test_catalog_richness_and_validity():
-    assert len(SIGNAL_CATALOG) == 264, f"Expected 264 signals, found {len(SIGNAL_CATALOG)}"
-    assert len(SIGNAL_CODE_CATALOG) == 264, (
-        f"Expected 264 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
+    assert len(SIGNAL_CATALOG) == 274, f"Expected 274 signals, found {len(SIGNAL_CATALOG)}"
+    assert len(SIGNAL_CODE_CATALOG) == 274, (
+        f"Expected 274 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
     )
 
     code_pattern = re.compile(r"^[A-Z]{2,3}\d{3}_signal$")
@@ -108,15 +108,15 @@ def test_catalog_richness_and_validity():
 
 def test_deterministic_category_codes():
     expected_category_counts = {
-        "trend": ("TRD", 52),
+        "trend": ("TRD", 54),
         "momentum": ("MOM", 39),
-        "volatility": ("VOL", 44),
-        "volume": ("VLM", 32),
-        "candlestick": ("CDL", 28),
-        "smc": ("SMC", 11),
+        "volatility": ("VOL", 47),
+        "volume": ("VLM", 34),
+        "candlestick": ("CDL", 29),
+        "smc": ("SMC", 12),
         "mean_reversion": ("MR", 25),
         "statistical": ("STA", 20),
-        "composite": ("CMP", 13),
+        "composite": ("CMP", 14),
     }
 
     for cat, (prefix, expected_count) in expected_category_counts.items():
@@ -146,6 +146,7 @@ def test_deterministic_category_codes():
     assert "TRD034_signal" not in trend_codes
     assert "TRD001_signal" in trend_codes
     assert "TRD053_signal" in trend_codes
+    assert "TRD055_signal" in trend_codes
 
     # Verify preserved candlestick codes
     cdl_codes = [s.code for s in get_signals_by_category("candlestick")]
@@ -155,16 +156,17 @@ def test_deterministic_category_codes():
     assert "CDL018_signal" not in cdl_codes
     assert "CDL019_signal" in cdl_codes
     assert "CDL028_signal" not in cdl_codes
+    assert "CDL029_signal" in cdl_codes
     assert "CDL035_signal" in cdl_codes
     assert "CDL037_signal" in cdl_codes
     assert "CDL038_signal" not in cdl_codes
 
 
 def test_get_signals_by_category_smc():
-    """Verify smc category returns 11 signals with SMC001_signal to SMC011_signal."""
+    """Verify smc category returns 12 signals with SMC001_signal to SMC012_signal."""
     smc_signals = get_signals_by_category("smc")
-    assert len(smc_signals) == 11
-    expected_codes = [f"SMC{i:03d}_signal" for i in range(1, 12)]
+    assert len(smc_signals) == 12
+    expected_codes = [f"SMC{i:03d}_signal" for i in range(1, 13)]
     for i, meta in enumerate(smc_signals, start=1):
         assert meta.code == f"SMC{i:03d}_signal"
         assert meta.category == "smc"
@@ -252,8 +254,8 @@ def test_bidirectional_mappings():
     code_to_name = get_code_to_name_map()
     name_to_code = get_name_to_code_map()
 
-    assert len(code_to_name) == 264
-    assert len(name_to_code) == 264
+    assert len(code_to_name) == 274
+    assert len(name_to_code) == 274
 
     assert code_to_name["TRD001_signal"] == "trend_sma_cross_5_20_signal"
     assert name_to_code["trend_sma_cross_5_20_signal"] == "TRD001_signal"

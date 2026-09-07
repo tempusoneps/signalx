@@ -125,7 +125,7 @@ def to_semantic_names(df: pd.DataFrame) -> pd.DataFrame:
 def _initialize_default_catalog() -> None:
     """Populate the default catalog with 100+ standard trading signals across all 8 categories."""
     # -------------------------------------------------------------------------
-    # 1. TREND SIGNALS (30 signals)
+    # 1. TREND SIGNALS (54 signals)
     # -------------------------------------------------------------------------
     trend_definitions = [
         (
@@ -492,9 +492,23 @@ def _initialize_default_catalog() -> None:
             "Close crosses above ZLEMA 21",
             "Close crosses below ZLEMA 21",
         ),
+        (
+            "trend_vn30_prior_auction_bias_signal",
+            "VN30 Prior Auction Bias shifted by 1 full session (evaluated near session close, applied next session)",
+            "signalx_native",
+            "Prior session long bias with Close > EMA55 and RSI21 > 50",
+            "Prior session short bias with Close < EMA55 and RSI21 < 50",
+        ),
+        (
+            "trend_vn30_asymmetric_persistence_signal",
+            "VN30 Intraday Asymmetric Directional Persistence (session range position > 0.79 or short persistence >= 0.42)",
+            "signalx_native",
+            "Session range position > 0.79 with DI+ > DI-, slope8 > 0, and RSI5 > 60",
+            "Short persistence >= 0.42 with DI- > DI+, slope8 < 0, and RSI5 < 40",
+        ),
     ]
     trend_codes = [f"TRD{i:03d}_signal" for i in range(1, 34)] + [
-        f"TRD{i:03d}_signal" for i in range(35, 54)
+        f"TRD{i:03d}_signal" for i in range(35, 56)
     ]
     for code, (name, desc, lib, buy_t, sell_t) in zip(trend_codes, trend_definitions, strict=True):
         register_signal(
@@ -797,7 +811,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 3. VOLATILITY SIGNALS (44 signals)
+    # 3. VOLATILITY SIGNALS (47 signals)
     # -------------------------------------------------------------------------
     vol_definitions = [
         (
@@ -1108,6 +1122,27 @@ def _initialize_default_catalog() -> None:
             "Bollinger Band width below 20th percentile then expands with bullish candle (pre-ATC squeeze breakout long)",
             "Bollinger Band width below 20th percentile then expands with bearish candle (pre-ATC squeeze breakout short)",
         ),
+        (
+            "vol_micro_channel_4_breakout_signal",
+            "Micro Channel 4-Bar Breakout with EMA55 and Volume Confirmation",
+            "signalx_native",
+            "Close breaks above 4-bar high with Close > EMA55, RSI21 > 53, and Volume > SMA20(Volume)",
+            "Close breaks below 4-bar low with Close < EMA55, RSI21 < 47, and Volume > SMA20(Volume)",
+        ),
+        (
+            "vol_lunch_range_breakout_signal",
+            "Midday Lunch-Range (11:00-12:55) Breakout in Afternoon Window (>= 13:00)",
+            "signalx_native",
+            "Afternoon breakout above lunch high with strong close position, slope5 > 0, and RSI8 > 55",
+            "Afternoon breakdown below lunch low with weak close position, slope5 < 0, and RSI8 < 45",
+        ),
+        (
+            "vol_close_to_close_donchian_signal",
+            "Close-to-Close Donchian 20 Channel Breakout with Trend and Volume Confirmation",
+            "signalx_native",
+            "Close breaks above 20-bar close maximum with Close > EMA55 and Volume > SMA20(Volume)",
+            "Close breaks below 20-bar close minimum with Close < EMA55 and Volume > SMA20(Volume)",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_definitions, start=1):
         register_signal(
@@ -1121,7 +1156,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 4. VOLUME SIGNALS (32 signals)
+    # 4. VOLUME SIGNALS (34 signals)
     # -------------------------------------------------------------------------
     vol_flow_definitions = [
         (
@@ -1348,6 +1383,20 @@ def _initialize_default_catalog() -> None:
             "Volume climax with long lower wick and close in upper half (bullish absorption)",
             "Volume climax with long upper wick and close in lower half (bearish absorption)",
         ),
+        (
+            "volume_rolling_shelf_zscore_signal",
+            "Rolling 12-Bar Volume Shelf & Variance Z-Score Stretch",
+            "signalx_native",
+            "Shelf Z-score >= 0.5 with RSI8 > 56, slope5 > 0, and Volume > SMA20(Volume)",
+            "Shelf Z-score <= -0.5 with RSI8 < 44, slope5 < 0, and Volume > SMA20(Volume)",
+        ),
+        (
+            "volume_vn30_late_session_vwap_momentum_signal",
+            "Late-Session (13:20-14:15) VWAP Momentum Stretch with Intraday Range Expansion",
+            "signalx_native",
+            "VWAP Z-score >= 0.75 with RSI8 >= 54 and session range expansion >= 0.12%",
+            "VWAP Z-score <= -0.75 with RSI8 <= 42 and session range expansion >= 0.12%",
+        ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(vol_flow_definitions, start=1):
         register_signal(
@@ -1361,7 +1410,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 5. CANDLESTICK SIGNALS (28 signals)
+    # 5. CANDLESTICK SIGNALS (29 signals)
     # -------------------------------------------------------------------------
     cdl_definitions = [
         (
@@ -1560,11 +1609,19 @@ def _initialize_default_catalog() -> None:
             "Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar",
             "Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar",
         ),
+        (
+            "cdl_body_atr_conviction_breakout_signal",
+            "Body to ATR Volatility Conviction Breakout with 10-bar Range Extension",
+            "signalx_native",
+            "Close breaks above 10-bar high with Body/ATR >= 0.20 and Close > EMA55",
+            "Close breaks below 10-bar low with Body/ATR <= -0.20 and Close < EMA55",
+        ),
     ]
     cdl_codes = (
         [f"CDL{i:03d}_signal" for i in range(1, 17)]
         + [f"CDL{i:03d}_signal" for i in range(19, 28)]
         + [f"CDL{i:03d}_signal" for i in range(35, 38)]
+        + ["CDL029_signal"]
     )
     for code, (name, desc, lib, buy_t, sell_t) in zip(cdl_codes, cdl_definitions, strict=True):
         register_signal(
@@ -1578,7 +1635,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 6. SMART MONEY CONCEPTS (SMC) SIGNALS (11 signals)
+    # 6. SMART MONEY CONCEPTS (SMC) SIGNALS (12 signals)
     # -------------------------------------------------------------------------
     smc_definitions = [
         (
@@ -1657,6 +1714,13 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "Price wicks below PDL then closes above it (bullish PDL sweep reversal)",
             "Price wicks above PDH then closes below it (bearish PDH sweep reversal)",
+        ),
+        (
+            "smc_morning_midpoint_acceptance_signal",
+            "Morning Midpoint Acceptance and Afternoon Expansion Breakout",
+            "signalx_native",
+            "Afternoon breakout above morning high with 4-bar acceptance >= 50% above midpoint and RSI8 > 54",
+            "Afternoon breakdown below morning low with 4-bar acceptance >= 50% below midpoint and RSI8 < 46",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(smc_definitions, start=1):
@@ -2018,7 +2082,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 7. COMPOSITE SIGNALS (13 signals)
+    # 9. COMPOSITE SIGNALS (14 signals)
     # -------------------------------------------------------------------------
     comp_definitions = [
         (
@@ -2111,6 +2175,13 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "Price above session VWAP, RVOL surge bullish, and session open breakout aligned bullish",
             "Price below session VWAP, RVOL surge bearish, and session open breakout aligned bearish",
+        ),
+        (
+            "comp_keltner_stochrsi_breakout_signal",
+            "Keltner Channel 20/2.0 & StochRSI Confluence Breakout with Volume Confirmation",
+            "signalx_native",
+            "Close breaks above KC upper band with StochRSI K > 65, Close > EMA55, and Volume > SMA20(Volume)",
+            "Close breaks below KC lower band with StochRSI K < 35, Close < EMA55, and Volume > SMA20(Volume)",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(comp_definitions, start=1):
