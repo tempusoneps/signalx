@@ -22,6 +22,11 @@ MEAN_REVERSION_SIGNAL_COLUMNS = [
     "mr_session_range_fade_signal",
     "mr_volume_climax_absorption_reversion_signal",
     "mr_multi_period_stretch_consensus_signal",
+    "mr_lehmann_short_term_reversal_signal",
+    "mr_lo_mackinlay_variance_ratio_signal",
+    "mr_ehlers_roofing_filter_reversion_signal",
+    "mr_amihud_liquidity_exhaustion_signal",
+    "mr_bb_w_bottom_m_top_signal",
 ]
 
 
@@ -1077,7 +1082,7 @@ def generate_mean_reversion_signals(
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 12 columns ending with '_signal', with values in
+        DataFrame containing 17 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1169,6 +1174,36 @@ def generate_mean_reversion_signals(
         # 12. Multi-Period Stretch Consensus (MR012)
         signals["mr_multi_period_stretch_consensus_signal"] = _calc_multi_period_stretch_consensus(
             close=close
+        )
+        pbar.update(1)
+
+        # 13. Lehmann Short-Term Return Reversal (MR013)
+        signals["mr_lehmann_short_term_reversal_signal"] = _calc_lehmann_short_term_reversal(
+            open_p=open_p, close=close
+        )
+        pbar.update(1)
+
+        # 14. Lo & MacKinlay Variance Ratio (MR014)
+        signals["mr_lo_mackinlay_variance_ratio_signal"] = _calc_lo_mackinlay_variance_ratio(
+            close=close
+        )
+        pbar.update(1)
+
+        # 15. Ehlers Roofing Filter Reversion (MR015)
+        signals["mr_ehlers_roofing_filter_reversion_signal"] = (
+            _calc_ehlers_roofing_filter_reversion(close=close)
+        )
+        pbar.update(1)
+
+        # 16. Amihud Liquidity Exhaustion (MR016)
+        signals["mr_amihud_liquidity_exhaustion_signal"] = _calc_amihud_liquidity_exhaustion(
+            open_p=open_p, high=high, low=low, close=close, volume=volume
+        )
+        pbar.update(1)
+
+        # 17. Bollinger Bands W-Bottom / M-Top (MR017)
+        signals["mr_bb_w_bottom_m_top_signal"] = _calc_bb_w_bottom_m_top(
+            open_p=open_p, high=high, low=low, close=close
         )
         pbar.update(1)
 

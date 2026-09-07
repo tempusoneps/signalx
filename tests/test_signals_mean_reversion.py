@@ -48,10 +48,10 @@ def make_synthetic_ohlcv(n: int = 150, seed: int = 42) -> pd.DataFrame:
     )
 
 
-def test_mean_reversion_signals_all_12_columns_present():
+def test_mean_reversion_signals_all_17_columns_present():
     df = make_synthetic_ohlcv(100)
     res = generate_mean_reversion_signals(df)
-    assert len(res.columns) == 12
+    assert len(res.columns) == 17
     assert list(res.columns) == MEAN_REVERSION_SIGNAL_COLUMNS
 
 
@@ -66,12 +66,12 @@ def test_mean_reversion_signals_empty_and_short_dataframe():
     empty_df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     res = generate_mean_reversion_signals(empty_df)
     assert len(res) == 0
-    assert len(res.columns) == 12
+    assert len(res.columns) == 17
 
     short_df = make_synthetic_ohlcv(3)
     res_short = generate_mean_reversion_signals(short_df)
     assert len(res_short) == 3
-    assert len(res_short.columns) == 12
+    assert len(res_short.columns) == 17
     for col in res_short.columns:
         assert set(res_short[col].unique()).issubset(ALL_SIGNAL_STATES)
 
@@ -184,7 +184,7 @@ def test_show_progress_flag():
     df = make_synthetic_ohlcv(50)
     res = generate_mean_reversion_signals(df, show_progress=True)
     assert len(res) == 50
-    assert len(res.columns) == 12
+    assert len(res.columns) == 17
 
 
 def test_calc_lehmann_short_term_reversal():
