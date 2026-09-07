@@ -65,9 +65,9 @@ def test_signal_metadata_attributes_and_frozen():
 
 
 def test_catalog_richness_and_validity():
-    assert len(SIGNAL_CATALOG) == 251, f"Expected 251 signals, found {len(SIGNAL_CATALOG)}"
-    assert len(SIGNAL_CODE_CATALOG) == 251, (
-        f"Expected 251 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
+    assert len(SIGNAL_CATALOG) == 256, f"Expected 256 signals, found {len(SIGNAL_CATALOG)}"
+    assert len(SIGNAL_CODE_CATALOG) == 256, (
+        f"Expected 256 signals in SIGNAL_CODE_CATALOG, found {len(SIGNAL_CODE_CATALOG)}"
     )
 
     code_pattern = re.compile(r"^[A-Z]{2,3}\d{3}_signal$")
@@ -114,6 +114,7 @@ def test_deterministic_category_codes():
         "volume": ("VLM", 32),
         "candlestick": ("CDL", 28),
         "smc": ("SMC", 11),
+        "mean_reversion": ("MR", 17),
         "statistical": ("STA", 20),
         "composite": ("CMP", 13),
     }
@@ -174,10 +175,10 @@ def test_get_signals_by_category_smc():
 
 
 def test_get_signals_by_category_mean_reversion():
-    """Verify mean_reversion category returns 12 signals with MR001_signal to MR012_signal."""
+    """Verify mean_reversion category returns 17 signals with MR001_signal to MR017_signal."""
     mr_signals = get_signals_by_category("mean_reversion")
-    assert len(mr_signals) == 12
-    expected_codes = [f"MR{i:03d}_signal" for i in range(1, 13)]
+    assert len(mr_signals) == 17
+    expected_codes = [f"MR{i:03d}_signal" for i in range(1, 18)]
     for i, meta in enumerate(mr_signals, start=1):
         assert meta.code == f"MR{i:03d}_signal"
         assert meta.category == "mean_reversion"
@@ -251,8 +252,8 @@ def test_bidirectional_mappings():
     code_to_name = get_code_to_name_map()
     name_to_code = get_name_to_code_map()
 
-    assert len(code_to_name) == 251
-    assert len(name_to_code) == 251
+    assert len(code_to_name) == 256
+    assert len(name_to_code) == 256
 
     assert code_to_name["TRD001_signal"] == "trend_sma_cross_5_20_signal"
     assert name_to_code["trend_sma_cross_5_20_signal"] == "TRD001_signal"

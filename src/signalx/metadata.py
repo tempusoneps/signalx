@@ -1671,7 +1671,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 7. MEAN REVERSION SIGNALS (12 signals)
+    # 7. MEAN REVERSION SIGNALS (17 signals)
     # -------------------------------------------------------------------------
     mr_definitions = [
         (
@@ -1757,6 +1757,41 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "Price simultaneously < mean - 1.8 sigma for 10, 20, and 50-bar windows",
             "Price simultaneously > mean + 1.8 sigma for 10, 20, and 50-bar windows",
+        ),
+        (
+            "mr_lehmann_short_term_reversal_signal",
+            "Lehmann Short-Term Return Reversal (3-bar standardized return shock reversion)",
+            "signalx_native",
+            "Return Z-Score < -2.2 with bullish close",
+            "Return Z-Score > +2.2 with bearish close",
+        ),
+        (
+            "mr_lo_mackinlay_variance_ratio_signal",
+            "Lo & MacKinlay Variance Ratio Reversion (multi-period VR < 0.75 mean-reverting regime)",
+            "signalx_native",
+            "VR < 0.75 and Price Z-Score < -1.8 with higher close",
+            "VR < 0.75 and Price Z-Score > +1.8 with lower close",
+        ),
+        (
+            "mr_ehlers_roofing_filter_reversion_signal",
+            "Ehlers Roofing Filter Reversion (2-pole HPF + 2-pole SuperSmoother cycle hook)",
+            "signalx_native",
+            "Standardized Roofing Filter hooks up from < -1.8",
+            "Standardized Roofing Filter hooks down from > +1.8",
+        ),
+        (
+            "mr_amihud_liquidity_exhaustion_signal",
+            "Amihud Liquidity Exhaustion Reversion (ILLIQ Z-score > 2.0 with rejection wick at extreme)",
+            "signalx_native",
+            "ILLIQ Z-Score > 2.0 at 15-bar Low with lower wick >= 35% and bullish close",
+            "ILLIQ Z-Score > 2.0 at 15-bar High with upper wick >= 35% and bearish close",
+        ),
+        (
+            "mr_bb_w_bottom_m_top_signal",
+            "Bollinger Bands W-Bottom & M-Top Reversion (structural double-touch band test)",
+            "signalx_native",
+            "W-Bottom support test holding inside lower BB with bullish close",
+            "M-Top resistance test holding inside upper BB with bearish close",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mr_definitions, start=1):
