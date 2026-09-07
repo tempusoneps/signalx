@@ -6,7 +6,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
-from signalx.signals.session_helper import extract_session_context
+from signalx.signals.session_helper import SessionContext, extract_session_context
 from signalx.utils import normalize_ohlcv
 
 VOLATILITY_SIGNAL_COLUMNS = [
@@ -54,6 +54,9 @@ VOLATILITY_SIGNAL_COLUMNS = [
     "vol_dual_thrust_range_breakout_signal",
     "vol_ib_breakout_30m_signal",
     "vol_pre_atc_squeeze_signal",
+    "vol_micro_channel_4_breakout_signal",
+    "vol_lunch_range_breakout_signal",
+    "vol_close_to_close_donchian_signal",
 ]
 
 
@@ -1189,8 +1192,209 @@ def _calc_pre_atc_squeeze(
     )
 
 
+def _calc_micro_channel_4_breakout(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate 4-bar rolling micro-channel breakout with EMA55, RSI21, and Volume confirmation (VOL045).
+
+    Formula:
+        micro_high = high.rolling(4).max().shift(1)
+        micro_low = low.rolling(4).min().shift(1)
+        ema55 = close.ewm(span=55, adjust=False).mean()
+        rsi21 = RSIIndicator(close, window=21, fillna=False).rsi()
+        vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    Triggers:
+        buy: close > micro_high and close > ema55 and rsi21 > 53 and volume > vol_ma20
+        sell: close < micro_low and close < ema55 and rsi21 < 47 and volume > vol_ma20
+        hold: (close > ema55 and rsi21 > 50) | (close < ema55 and rsi21 < 50)
+        none: default
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    micro_high = high.rolling(4).max().shift(1)
+    micro_low = low.rolling(4).min().shift(1)
+    ema55 = close.ewm(span=55, adjust=False).mean()
+    try:
+        rsi21 = ta.momentum.RSIIndicator(close=close, window=21, fillna=False).rsi()
+    except Exception:
+        rsi21 = pd.Series(np.nan, index=close.index)
+    vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    mh = micro_high.to_numpy(dtype=float, na_value=np.nan)
+    ml = micro_low.to_numpy(dtype=float, na_value=np.nan)
+    e55 = ema55.to_numpy(dtype=float, na_value=np.nan)
+    r21 = rsi21.to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    vma = vol_ma20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(c)
+        & ~np.isnan(mh)
+        & ~np.isnan(ml)
+        & ~np.isnan(e55)
+        & ~np.isnan(r21)
+        & ~np.isnan(v)
+        & ~np.isnan(vma)
+    )
+
+    buy = valid & (c > mh) & (c > e55) & (r21 > 53.0) & (v > vma)
+    sell = valid & (c < ml) & (c < e55) & (r21 < 47.0) & (v > vma)
+    hold = valid & ~buy & ~sell & (((c > e55) & (r21 > 50.0)) | ((c < e55) & (r21 < 50.0)))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_lunch_range_breakout(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """Calculate Midday Lunch-Range Breakout in Afternoon Window (VOL046).
+
+    Midday lunch range (11:00 - 12:55, time_minutes >= 660 & <= 775;
+    fallback if no datetime: bar_in_session >= 25 & <= 35):
+        For each session, compute lunch_high = high[lunch_mask].max(), lunch_low = low[lunch_mask].min().
+
+    Afternoon window (t >= 13:00, time_minutes >= 780; fallback: bar_in_session >= 36):
+        bar_close_pos = (close - low) / (high - low + 1e-8)
+        slope5 = close.diff(5) / 5.0
+        rsi8 = RSIIndicator(close, window=8, fillna=False).rsi()
+
+    Triggers (only active in afternoon window):
+        buy: close > lunch_high and bar_close_pos >= 0.60 and slope5 > 0 and rsi8 > 55
+        sell: close < lunch_low and bar_close_pos <= 0.40 and slope5 < 0 and rsi8 < 45
+        hold: (close > lunch_high and slope5 >= 0) | (close < lunch_low and slope5 <= 0)
+        none: default
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    is_datetime = pd.api.types.is_string_dtype(session_ctx.session_id) or (
+        len(session_ctx.session_id) > 0 and isinstance(session_ctx.session_id.iloc[0], str)
+    )
+
+    if is_datetime:
+        lunch_mask = (session_ctx.time_minutes >= 660) & (session_ctx.time_minutes <= 775)
+        afternoon_mask = session_ctx.time_minutes >= 780
+    else:
+        lunch_mask = (session_ctx.bar_in_session >= 25) & (session_ctx.bar_in_session <= 35)
+        afternoon_mask = session_ctx.bar_in_session >= 36
+
+    lunch_high_sub = high.where(lunch_mask)
+    lunch_low_sub = low.where(lunch_mask)
+    lunch_high = lunch_high_sub.groupby(session_ctx.session_id, sort=False).transform("max")
+    lunch_low = lunch_low_sub.groupby(session_ctx.session_id, sort=False).transform("min")
+
+    bar_close_pos = (close - low) / (high - low + 1e-8)
+    slope5 = close.diff(5) / 5.0
+    try:
+        rsi8 = ta.momentum.RSIIndicator(close=close, window=8, fillna=False).rsi()
+    except Exception:
+        rsi8 = pd.Series(np.nan, index=close.index)
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    lh = lunch_high.to_numpy(dtype=float, na_value=np.nan)
+    ll = lunch_low.to_numpy(dtype=float, na_value=np.nan)
+    bcp = bar_close_pos.to_numpy(dtype=float, na_value=np.nan)
+    s5 = slope5.to_numpy(dtype=float, na_value=np.nan)
+    r8 = rsi8.to_numpy(dtype=float, na_value=np.nan)
+    is_afternoon = afternoon_mask.to_numpy(dtype=bool)
+
+    valid = (
+        is_afternoon
+        & ~np.isnan(c)
+        & ~np.isnan(lh)
+        & ~np.isnan(ll)
+        & ~np.isnan(bcp)
+        & ~np.isnan(s5)
+        & ~np.isnan(r8)
+    )
+
+    buy = valid & (c > lh) & (bcp >= 0.60) & (s5 > 0.0) & (r8 > 55.0)
+    sell = valid & (c < ll) & (bcp <= 0.40) & (s5 < 0.0) & (r8 < 45.0)
+    hold = valid & ~buy & ~sell & (((c > lh) & (s5 >= 0.0)) | ((c < ll) & (s5 <= 0.0)))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_close_to_close_donchian(
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+) -> pd.Series:
+    """Calculate Close-to-Close Donchian Channel Breakout (VOL047).
+
+    Formula:
+        cdc_upper = close.rolling(window).max().shift(1)
+        cdc_lower = close.rolling(window).min().shift(1)
+        ema55 = close.ewm(span=55, adjust=False).mean()
+        vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    Triggers:
+        buy: close > cdc_upper and close > ema55 and volume > vol_ma20
+        sell: close < cdc_lower and close < ema55 and volume > vol_ma20
+        hold: (close > ema55 and close >= cdc_lower) | (close < ema55 and close <= cdc_upper)
+        none: default
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    cdc_upper = close.rolling(window).max().shift(1)
+    cdc_lower = close.rolling(window).min().shift(1)
+    ema55 = close.ewm(span=55, adjust=False).mean()
+    vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    upper = cdc_upper.to_numpy(dtype=float, na_value=np.nan)
+    lower = cdc_lower.to_numpy(dtype=float, na_value=np.nan)
+    e55 = ema55.to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    vma = vol_ma20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(c)
+        & ~np.isnan(upper)
+        & ~np.isnan(lower)
+        & ~np.isnan(e55)
+        & ~np.isnan(v)
+        & ~np.isnan(vma)
+    )
+
+    buy = valid & (c > upper) & (c > e55) & (v > vma)
+    sell = valid & (c < lower) & (c < e55) & (v > vma)
+    hold = valid & ~buy & ~sell & (((c > e55) & (c >= lower)) | ((c < e55) & (c <= upper)))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 44 volatility, channel, and band signals from OHLCV dataframe.
+    """Generate all 47 volatility, channel, and band signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -1202,7 +1406,7 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 44 columns ending with '_signal', with values in
+        DataFrame containing 47 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1221,6 +1425,7 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
         high = df_norm["high"]
         low = df_norm["low"]
         close = df_norm["close"]
+        volume = df_norm["volume"]
 
         signals = pd.DataFrame(index=df_norm.index)
 
@@ -1533,6 +1738,23 @@ def generate_volatility_signals(df: pd.DataFrame, show_progress: bool = False) -
         signals["vol_pre_atc_squeeze_signal"] = _calc_pre_atc_squeeze(
             df_norm, open_p, high, low, close
         )
+        pbar.update(1)
+
+        # 37. Rolling 4-Bar Micro-Channel Breakout (1)
+        signals["vol_micro_channel_4_breakout_signal"] = _calc_micro_channel_4_breakout(
+            high, low, close, volume
+        )
+        pbar.update(1)
+
+        # 38. Midday Lunch-Range Breakout (1)
+        session_ctx = extract_session_context(df_norm)
+        signals["vol_lunch_range_breakout_signal"] = _calc_lunch_range_breakout(
+            open_p, high, low, close, session_ctx
+        )
+        pbar.update(1)
+
+        # 39. Close-to-Close Donchian Channel (1)
+        signals["vol_close_to_close_donchian_signal"] = _calc_close_to_close_donchian(close, volume)
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index

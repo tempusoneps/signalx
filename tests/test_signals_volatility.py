@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
+from signalx.signals.session_helper import extract_session_context
 from signalx.signals.volatility import (
     VOLATILITY_SIGNAL_COLUMNS,
     _calc_atr_ratio_fast_slow,
@@ -12,12 +13,15 @@ from signalx.signals.volatility import (
     _calc_bb_bounce,
     _calc_chaikin_volatility,
     _calc_chandelier_exit,
+    _calc_close_to_close_donchian,
     _calc_dual_thrust,
     _calc_garman_klass,
     _calc_hv_ratio_breakout,
     _calc_ib_breakout_30m,
     _calc_keltner_width_squeeze,
+    _calc_lunch_range_breakout,
     _calc_mass_index_reversal,
+    _calc_micro_channel_4_breakout,
     _calc_natr_stretch,
     _calc_parkinson_surge,
     _calc_pct_b_reversal,
@@ -58,15 +62,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLATILITY_SIGNALS = VOLATILITY_SIGNAL_COLUMNS
 
 
-def test_volatility_signals_all_44_columns_present():
-    """Verify generate_volatility_signals produces exactly 44 volatility signals."""
+def test_volatility_signals_all_47_columns_present():
+    """Verify generate_volatility_signals produces exactly 47 volatility signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volatility_signals(df)
 
-    assert len(EXPECTED_VOLATILITY_SIGNALS) == 44
+    assert len(EXPECTED_VOLATILITY_SIGNALS) == 47
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 44
+    assert len(res.columns) == 47
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLATILITY_SIGNALS:
@@ -75,6 +79,9 @@ def test_volatility_signals_all_44_columns_present():
 
     assert "vol_ib_breakout_30m_signal" in res.columns
     assert "vol_pre_atc_squeeze_signal" in res.columns
+    assert "vol_micro_channel_4_breakout_signal" in res.columns
+    assert "vol_lunch_range_breakout_signal" in res.columns
+    assert "vol_close_to_close_donchian_signal" in res.columns
 
 
 def test_volatility_signals_all_states_valid():
@@ -112,7 +119,7 @@ def test_volatility_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 44
+    assert len(res.columns) == 47
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -127,7 +134,7 @@ def test_volatility_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 44
+    assert len(res.columns) == 47
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -147,7 +154,7 @@ def test_volatility_signals_normalization():
     res = generate_volatility_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 44
+    assert len(res.columns) == 47
 
 
 def test_volatility_signals_missing_columns():
@@ -621,9 +628,12 @@ def test_volatility_signals_intraday_datetime_context():
     )
 
     res = generate_volatility_signals(df)
-    assert len(res.columns) == 44
+    assert len(res.columns) == 47
     assert "vol_ib_breakout_30m_signal" in res.columns
     assert "vol_pre_atc_squeeze_signal" in res.columns
+    assert "vol_micro_channel_4_breakout_signal" in res.columns
+    assert "vol_lunch_range_breakout_signal" in res.columns
+    assert "vol_close_to_close_donchian_signal" in res.columns
 
     ib_sig = res["vol_ib_breakout_30m_signal"]
     pre_atc_sig = res["vol_pre_atc_squeeze_signal"]
@@ -632,3 +642,111 @@ def test_volatility_signals_intraday_datetime_context():
     assert set(pre_atc_sig.unique()).issubset(ALL_SIGNAL_STATES)
     # First 6 bars of first day must be NONE
     assert (ib_sig.iloc[:6] == SignalState.NONE).all()
+
+
+def test_calc_micro_channel_4_breakout_direct():
+    """Verify 4-bar micro channel breakout calculation and states."""
+    n = 60
+    close = pd.Series([100.0 + i * 0.5 for i in range(n)])
+    high = close + 1.0
+    low = close - 1.0
+    volume = pd.Series([1000.0] * n)
+
+    # Bar 58: huge volume spike and price jump above micro_high (and above ema55 with rsi21 > 53)
+    high.iloc[58] = 150.0
+    close.iloc[58] = 149.0
+    volume.iloc[58] = 50000.0
+
+    sig = _calc_micro_channel_4_breakout(high, low, close, volume)
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert sig.iloc[58] == SignalState.BUY
+
+    # Downward breakdown
+    close_down = pd.Series([200.0 - i * 0.5 for i in range(n)])
+    high_down = close_down + 1.0
+    low_down = close_down - 1.0
+    volume_down = pd.Series([1000.0] * n)
+    low_down.iloc[58] = 50.0
+    close_down.iloc[58] = 51.0
+    volume_down.iloc[58] = 50000.0
+
+    sig_down = _calc_micro_channel_4_breakout(high_down, low_down, close_down, volume_down)
+    assert sig_down.iloc[58] == SignalState.SELL
+
+
+def test_calc_lunch_range_breakout_direct():
+    """Verify midday lunch range breakout in afternoon window."""
+    n = 50
+    # In synthetic fallback, bars 25..35 are lunch range, bars >= 36 are afternoon
+    close = pd.Series([100.0] * n)
+    open_p = pd.Series([100.0] * n)
+    high = pd.Series([102.0] * n)
+    low = pd.Series([98.0] * n)
+
+    # Lunch range establishes high=102, low=98 for bars 25..35
+    # Afternoon bar 40 breaks out above lunch high
+    # Needs: close > lunch_high (102), bar_close_pos >= 0.60, slope5 > 0, rsi8 > 55
+    for i in range(36, 42):
+        close.iloc[i] = 100.0 + (i - 35) * 1.5
+        open_p.iloc[i] = close.iloc[i] - 0.5
+        high.iloc[i] = close.iloc[i] + 0.2
+        low.iloc[i] = close.iloc[i] - 1.0
+
+    df_synth = pd.DataFrame(
+        {"open": open_p, "high": high, "low": low, "close": close, "volume": 1000.0}
+    )
+    ctx = extract_session_context(df_synth)
+
+    sig = _calc_lunch_range_breakout(open_p, high, low, close, ctx)
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    # Outside afternoon window (bar 20) must be NONE
+    assert sig.iloc[20] == SignalState.NONE
+    # Bar 40 is afternoon breakout BUY
+    assert sig.iloc[40] == SignalState.BUY
+
+    # Downward breakdown below lunch low
+    close_b = pd.Series([100.0] * n)
+    open_b = pd.Series([100.0] * n)
+    high_b = pd.Series([102.0] * n)
+    low_b = pd.Series([98.0] * n)
+    for i in range(36, 42):
+        close_b.iloc[i] = 100.0 - (i - 35) * 1.5
+        open_b.iloc[i] = close_b.iloc[i] + 0.5
+        high_b.iloc[i] = close_b.iloc[i] + 1.0
+        low_b.iloc[i] = close_b.iloc[i] - 0.2
+
+    df_synth_b = pd.DataFrame(
+        {"open": open_b, "high": high_b, "low": low_b, "close": close_b, "volume": 1000.0}
+    )
+    ctx_b = extract_session_context(df_synth_b)
+    sig_b = _calc_lunch_range_breakout(open_b, high_b, low_b, close_b, ctx_b)
+    assert sig_b.iloc[40] == SignalState.SELL
+
+
+def test_calc_close_to_close_donchian_direct():
+    """Verify close-to-close Donchian breakout and breakdown."""
+    n = 60
+    close = pd.Series([100.0] * n)
+    volume = pd.Series([1000.0] * n)
+
+    # Upper breakout at bar 30
+    close.iloc[30] = 110.0
+    volume.iloc[30] = 5000.0
+
+    sig = _calc_close_to_close_donchian(close, volume, window=20)
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    assert sig.iloc[30] == SignalState.BUY
+
+    # Lower breakdown at bar 35
+    close_down = pd.Series([100.0] * n)
+    close_down.iloc[30] = 80.0
+    volume_down = pd.Series([1000.0] * n)
+    volume_down.iloc[30] = 5000.0
+    sig_down = _calc_close_to_close_donchian(close_down, volume_down, window=20)
+    assert sig_down.iloc[30] == SignalState.SELL
