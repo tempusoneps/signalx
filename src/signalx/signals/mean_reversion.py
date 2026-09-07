@@ -822,6 +822,80 @@ def _calc_lo_mackinlay_variance_ratio(
     )
 
 
+def _calc_ehlers_roofing_filter_reversion(
+    close: pd.Series,
+    hp_period: int = 48,
+    ss_period: int = 10,
+    std_window: int = 30,
+) -> pd.Series:
+    """John Ehlers (2013) Roofing Filter Reversion (MR015).
+
+    Two-pole High-Pass Filter removes macro trend, Two-pole SuperSmoother Filter
+    removes high-frequency tick noise.
+    Buy: Standardized Roofing Filter hooks up from < -1.8
+    Sell: Standardized Roofing Filter hooks down from > +1.8
+    Hold: Mean-reverting path back toward zero
+    """
+    n = len(close)
+    if n < hp_period + std_window:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+
+    # 1. Two-pole High-Pass Filter
+    hp = np.zeros(n, dtype=float)
+    rad_hp = np.sqrt(2.0) * np.pi / hp_period
+    alpha1 = (np.cos(rad_hp) + np.sin(rad_hp) - 1.0) / np.cos(rad_hp)
+    c1 = (1.0 - alpha1 / 2.0) ** 2
+    c2 = 2.0 * (1.0 - alpha1)
+    c3 = -((1.0 - alpha1) ** 2)
+
+    for i in range(2, n):
+        hp[i] = c1 * (c[i] - 2.0 * c[i - 1] + c[i - 2]) + c2 * hp[i - 1] + c3 * hp[i - 2]
+
+    # 2. Two-pole SuperSmoother Filter on HP
+    filt = np.zeros(n, dtype=float)
+    rad_ss = np.sqrt(2.0) * np.pi / ss_period
+    a1 = np.exp(-rad_ss)
+    b1 = 2.0 * a1 * np.cos(rad_ss)
+    coef2 = b1
+    coef3 = -(a1**2)
+    coef1 = 1.0 - coef2 - coef3
+
+    for i in range(2, n):
+        filt[i] = coef1 * (hp[i] + hp[i - 1]) / 2.0 + coef2 * filt[i - 1] + coef3 * filt[i - 2]
+
+    # 3. Standardize by rolling std
+    filt_s = pd.Series(filt, index=close.index)
+    roll_std = filt_s.rolling(std_window).std().to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(roll_std) & (roll_std > 1e-12)
+    z_roof = np.zeros(n, dtype=float)
+    np.divide(filt, roll_std, out=z_roof, where=valid)
+
+    z_prev = np.roll(z_roof, 1)
+    z_prev[0] = 0.0
+
+    buy = valid & (z_prev < -1.8) & (z_roof >= -1.8)
+    sell = valid & (z_prev > 1.8) & (z_roof <= 1.8)
+    hold = (
+        valid
+        & ~buy
+        & ~sell
+        & (((z_roof < -0.3) & (z_roof >= -1.8)) | ((z_roof > 0.3) & (z_roof <= 1.8)))
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

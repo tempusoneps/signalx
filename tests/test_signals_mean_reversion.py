@@ -11,6 +11,7 @@ from signalx.signals.mean_reversion import (
     _calc_bb_pct_b_hook_reversion,
     _calc_connors_rsi2_regime,
     _calc_dual_ma_disparity_index,
+    _calc_ehlers_roofing_filter_reversion,
     _calc_keltner_atr_stretch_reentry,
     _calc_kurtosis_fat_tail_exhaustion,
     _calc_lehmann_short_term_reversal,
@@ -194,5 +195,12 @@ def test_calc_lehmann_short_term_reversal():
 def test_calc_lo_mackinlay_variance_ratio():
     df = make_synthetic_ohlcv(120)
     sig = _calc_lo_mackinlay_variance_ratio(df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_ehlers_roofing_filter_reversion():
+    df = make_synthetic_ohlcv(150)
+    sig = _calc_ehlers_roofing_filter_reversion(df["close"])
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
