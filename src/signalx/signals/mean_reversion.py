@@ -1375,6 +1375,83 @@ def _calc_vn30_pdh_pdl_false_break_fade(
     )
 
 
+def _calc_vn30_midday_lunch_range_fade(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """VN30F1M Midday Lunch Range Edge Fade (MR023).
+
+    In pre-lunch window (11:00-11:30), volume dries up and price drifts toward morning range edge.
+    Buy: Low touches lower range edge on low volume with bullish rejection.
+    Sell: High touches upper range edge on low volume with bearish rejection.
+    """
+    n = len(close)
+    if n < 10:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    t_min = session_ctx.time_minutes
+    # 11:00 to 11:30
+    is_pre_lunch = (t_min >= 11 * 60) & (t_min <= 11 * 60 + 30)
+
+    # Expanding session extremes up to previous bar
+    sess_high_prior = (
+        high.groupby(sess_id)
+        .transform(lambda s: s.shift(1).expanding().max())
+        .to_numpy(dtype=float, na_value=np.nan)
+    )
+    sess_low_prior = (
+        low.groupby(sess_id)
+        .transform(lambda s: s.shift(1).expanding().min())
+        .to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    # Volume drop
+    vol_sma20 = volume.rolling(20, min_periods=5).mean().to_numpy(dtype=float, na_value=np.nan)
+    vol_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+    vol_low = ~np.isnan(vol_sma20) & (vol_arr < 0.85 * vol_sma20)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        is_pre_lunch.to_numpy(dtype=bool)
+        & vol_low
+        & ~np.isnan(sess_high_prior)
+        & ~np.isnan(sess_low_prior)
+    )
+
+    buy = valid & (l_arr <= sess_low_prior * 1.002) & (c_arr > o_arr)
+    sell = valid & (h_arr >= sess_high_prior * 0.998) & (c_arr < o_arr)
+
+    mid_p = (sess_high_prior + sess_low_prior) / 2.0
+    hold = (
+        valid
+        & ~buy
+        & ~sell
+        & (
+            ((c_arr > sess_low_prior) & (c_arr < mid_p))
+            | ((c_arr < sess_high_prior) & (c_arr > mid_p))
+        )
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
