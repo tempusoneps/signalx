@@ -6,7 +6,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
-from signalx.signals.session_helper import extract_session_context
+from signalx.signals.session_helper import SessionContext, extract_session_context
 from signalx.utils import normalize_ohlcv
 
 MEAN_REVERSION_SIGNAL_COLUMNS = [
@@ -1058,6 +1058,63 @@ def _calc_bb_w_bottom_m_top(
     return pd.Series(
         np.select(
             [w_bottom, m_top, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_vn30_morning_gap_fade(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+    gap_thresh: float = 3.0,
+) -> pd.Series:
+    """VN30F1M Morning ATO Gap Fade (MR018).
+
+    Measures opening session gap vs Previous Day Close (PDC).
+    In morning open window (08:45-09:30):
+    Buy: Gap down <= -gap_thresh, bar is bullish (Close > Open) aiming back toward PDC.
+    Sell: Gap up >= +gap_thresh, bar is bearish (Close < Open) aiming back toward PDC.
+    Hold: In trade between open and PDC.
+    """
+    n = len(close)
+    if n < 5:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+
+    # Calculate PDC (prior session close)
+    last_close_per_session = close.groupby(sess_id).last()
+    pdc_s = sess_id.map(last_close_per_session.shift(1))
+    pdc_arr = pdc_s.to_numpy(dtype=float, na_value=np.nan)
+
+    # Calculate Session Open
+    first_open_per_session = open_p.groupby(sess_id).first()
+    sess_open_s = sess_id.map(first_open_per_session)
+    sess_open_arr = sess_open_s.to_numpy(dtype=float, na_value=np.nan)
+
+    gap = sess_open_arr - pdc_arr
+    valid_gap = ~np.isnan(gap) & session_ctx.is_morning_open.to_numpy(dtype=bool)
+
+    gap_down = valid_gap & (gap <= -gap_thresh)
+    gap_up = valid_gap & (gap >= gap_thresh)
+
+    buy = gap_down & (c_arr > o_arr) & (c_arr < pdc_arr)
+    sell = gap_up & (c_arr < o_arr) & (c_arr > pdc_arr)
+    hold = (gap_down & (c_arr >= o_arr) & (c_arr < pdc_arr) & ~buy) | (
+        gap_up & (c_arr <= o_arr) & (c_arr > pdc_arr) & ~sell
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
             [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
             default=SignalState.NONE,
         ),

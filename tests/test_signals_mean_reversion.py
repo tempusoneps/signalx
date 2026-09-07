@@ -22,11 +22,13 @@ from signalx.signals.mean_reversion import (
     _calc_multi_period_stretch_consensus,
     _calc_ou_process_spread_reversion,
     _calc_session_range_fade,
+    _calc_vn30_morning_gap_fade,
     _calc_volume_climax_absorption_reversion,
     _calc_vwap_distance_zscore,
     _calc_wr_cci_double_oversold,
     generate_mean_reversion_signals,
 )
+from signalx.signals.session_helper import extract_session_context
 
 
 def make_synthetic_ohlcv(n: int = 150, seed: int = 42) -> pd.DataFrame:
@@ -220,5 +222,13 @@ def test_calc_amihud_liquidity_exhaustion():
 def test_calc_bb_w_bottom_m_top():
     df = make_synthetic_ohlcv(120)
     sig = _calc_bb_w_bottom_m_top(df["open"], df["high"], df["low"], df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_morning_gap_fade():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_morning_gap_fade(df["open"], df["high"], df["low"], df["close"], ctx)
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
