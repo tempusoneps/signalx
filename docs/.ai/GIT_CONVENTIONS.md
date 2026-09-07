@@ -71,3 +71,5 @@ All branch names must be lowercase, hyphen-separated, and prefixed with the cate
    bash scripts/generate_agents_markdown.sh
    ```
    and commit the auto-generated `AGENTS.md`, `GEMINI.md`, and `CLAUDE.md` along with the source docs.
+4. **Gitignore Verification Before Commits**:
+   Always check all `.gitignore` files (root `.gitignore` and any subfolder `.gitignore`) before staging or committing any file. Never force-add (`git add -f`) or commit files and directories that match `.gitignore` rules (such as `docs/superpowers`, `.superpowers`, `.venv`, cached files, or reports).
