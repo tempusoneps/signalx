@@ -36,6 +36,7 @@ CANDLESTICK_SIGNAL_COLUMNS = [
     "cdl_thrust_bar_signal",
     "cdl_narrow_range_7_breakout_signal",
     "cdl_wide_range_reversal_signal",
+    "cdl_body_atr_conviction_breakout_signal",
 ]
 
 
@@ -942,6 +943,82 @@ def _calc_wide_range_reversal(high: pd.Series, low: pd.Series, close: pd.Series)
     return pd.Series(res, index=close.index, dtype=str)
 
 
+def _calc_body_atr_conviction_breakout(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    atr_period: int = 14,
+    body_atr_ratio: float = 1.5,
+) -> pd.Series:
+    """Calculate Body/ATR Conviction Breakout signal (CDL029).
+
+    A bar is a "conviction breakout" when its candle body is at least
+    ``body_atr_ratio`` times the rolling ATR(``atr_period``).  The signal
+    identifies high-momentum directional bars that break out with genuine
+    conviction rather than noise.
+
+    Parameters
+    ----------
+    open_p : pd.Series
+        Bar open prices.
+    high : pd.Series
+        Bar high prices.
+    low : pd.Series
+        Bar low prices.
+    close : pd.Series
+        Bar close prices.
+    atr_period : int, default 14
+        Lookback period for ATR rolling average.
+    body_atr_ratio : float, default 1.5
+        Minimum ratio of body size to ATR to qualify as conviction.
+
+    Returns
+    -------
+    pd.Series
+        String signal series with values in {'buy', 'sell', 'hold', 'none'}.
+        - ``'buy'``:  conviction bullish bar (close > open, body >= ratio * ATR)
+        - ``'sell'``: conviction bearish bar (close < open, body >= ratio * ATR)
+        - ``'hold'``: valid bar but body < ratio * ATR (no conviction)
+        - ``'none'``: warmup period (ATR not yet available)
+    """
+    n = len(open_p)
+    if n == 0:
+        return pd.Series(dtype=str, index=open_p.index)
+
+    # True Range components (no lookahead — all using current/past data)
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    # Rolling ATR — min_periods=atr_period ensures warmup rows stay NaN
+    atr = tr.rolling(atr_period, min_periods=atr_period).mean()
+
+    body_abs = (close - open_p).abs()
+
+    o = open_p.to_numpy(dtype=float, na_value=np.nan)
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    b_arr = body_abs.to_numpy(dtype=float, na_value=np.nan)
+    atr_arr = atr.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(o) & ~np.isnan(c) & ~np.isnan(b_arr) & ~np.isnan(atr_arr)
+    conviction = valid & (b_arr >= body_atr_ratio * atr_arr)
+
+    bull_conviction = conviction & (c > o)
+    bear_conviction = conviction & (c < o)
+
+    condlist = [bull_conviction, bear_conviction, valid]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    res = np.select(condlist, choicelist, default=SignalState.NONE)
+    return pd.Series(res, index=open_p.index, dtype=str)
+
+
 def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
     """Generate all 28 candlestick and price action signals from OHLCV dataframe.
 
@@ -955,7 +1032,7 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 28 columns ending with '_signal', with values in
+        DataFrame containing 29 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1092,6 +1169,12 @@ def generate_candlestick_signals(df: pd.DataFrame, show_progress: bool = False) 
 
         # 28. Wide Range Reversal (1)
         signals["cdl_wide_range_reversal_signal"] = _calc_wide_range_reversal(high, low, close)
+        pbar.update(1)
+
+        # 29. Body/ATR Conviction Breakout (1)
+        signals["cdl_body_atr_conviction_breakout_signal"] = _calc_body_atr_conviction_breakout(
+            open_p, high, low, close
+        )
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and match index

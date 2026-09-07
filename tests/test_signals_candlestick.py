@@ -7,6 +7,7 @@ import pytest
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
 from signalx.signals.candlestick import (
     CANDLESTICK_SIGNAL_COLUMNS,
+    _calc_body_atr_conviction_breakout,
     _calc_consecutive_directional,
     _calc_doji_reversal,
     _calc_engulfing,
@@ -52,16 +53,16 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_CANDLESTICK_SIGNALS = CANDLESTICK_SIGNAL_COLUMNS
 
 
-def test_candlestick_signals_all_28_columns_present():
-    """Verify generate_candlestick_signals produces exactly 28 candlestick signals."""
+def test_candlestick_signals_all_29_columns_present():
+    """Verify generate_candlestick_signals produces exactly 29 candlestick signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_candlestick_signals(df)
 
-    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 28
+    assert len(EXPECTED_CANDLESTICK_SIGNALS) == 29
     assert EXPECTED_CANDLESTICK_SIGNALS == CANDLESTICK_SIGNAL_COLUMNS
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 28
+    assert len(res.columns) == 29
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_CANDLESTICK_SIGNALS:
@@ -642,3 +643,59 @@ def test_signals_package_export():
     from signalx.signals import generate_candlestick_signals as exported_func
 
     assert callable(exported_func)
+
+
+def test_body_atr_conviction_breakout_signal_direct():
+    """Verify CDL029 Body/ATR Conviction Breakout detection.
+
+    Logic:
+      - ATR(14) rolling.  body >= 1.5 * ATR => conviction breakout.
+      - BUY  when close > open (bullish conviction bar)
+      - SELL when close < open (bearish conviction bar)
+      - NONE during warmup (< 14 bars of data)
+      - HOLD otherwise (bar is valid but body < 1.5 * ATR)
+    """
+    # Build 20 small candles to seed ATR, then 2 conviction bars.
+    n_seed = 20
+    opens = [100.0] * n_seed
+    closes = [101.0] * n_seed  # body = 1.0
+    highs = [101.5] * n_seed
+    lows = [99.5] * n_seed  # ATR ≈ 2.0 => 1.5*ATR ≈ 3.0
+
+    # Bar 20: bullish conviction (body = 10.0 >> 3.0 threshold) → BUY
+    opens.append(100.0)
+    closes.append(110.0)
+    highs.append(110.5)
+    lows.append(99.5)
+
+    # Bar 21: bearish conviction → SELL
+    opens.append(110.0)
+    closes.append(100.0)
+    highs.append(110.5)
+    lows.append(99.5)
+
+    df = pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [1000.0] * len(opens),
+        }
+    )
+    res = generate_candlestick_signals(df)
+    sig = res["cdl_body_atr_conviction_breakout_signal"]
+
+    # Warmup rows (< 14 bars worth of ATR) must be NONE
+    assert sig.iloc[0] == SignalState.NONE
+
+    # Conviction bars must be BUY / SELL
+    assert sig.iloc[20] == SignalState.BUY
+    assert sig.iloc[21] == SignalState.SELL
+
+    # All values are within valid states
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+    # Helper direct call — empty series
+    empty_s = pd.Series([], dtype=float)
+    assert len(_calc_body_atr_conviction_breakout(empty_s, empty_s, empty_s, empty_s)) == 0
