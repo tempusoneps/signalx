@@ -1250,6 +1250,70 @@ def _calc_vn30_afternoon_reversal_trap(
     )
 
 
+def _calc_vn30_pre_atc_vwap_snapback(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    session_ctx: SessionContext,
+    z_thresh: float = 2.0,
+) -> pd.Series:
+    """VN30F1M Pre-ATC Snapback to VWAP (MR021).
+
+    In pre-ATC window (14:00-14:25), traders close intraday positions.
+    Buy: Z-score vs cumulative Session VWAP < -z_thresh with Close > Open.
+    Sell: Z-score vs cumulative Session VWAP > +z_thresh with Close < Open.
+    Hold: |Z-score| > 0.5 in pre-ATC window.
+    """
+    n = len(close)
+    if n < 5:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    typ_price = (high + low + close) / 3.0
+    vol_clamped = np.maximum(volume.to_numpy(dtype=float, na_value=1.0), 1.0)
+    vol_s = pd.Series(vol_clamped, index=close.index)
+
+    pv = typ_price * vol_s
+    cum_pv = pv.groupby(sess_id).cumsum()
+    cum_v = vol_s.groupby(sess_id).cumsum()
+
+    vwap = cum_pv / np.maximum(cum_v, 1e-9)
+    vwap_arr = vwap.to_numpy(dtype=float, na_value=np.nan)
+
+    # Session standard deviation
+    roll_std = (
+        close.groupby(sess_id)
+        .transform(lambda s: s.expanding().std())
+        .to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_z = ~np.isnan(vwap_arr) & ~np.isnan(roll_std) & (roll_std > 1e-8)
+    z_vwap = np.zeros(n, dtype=float)
+    np.divide(c_arr - vwap_arr, roll_std, out=z_vwap, where=valid_z)
+
+    is_pre_atc = session_ctx.is_pre_atc.to_numpy(dtype=bool)
+    valid = is_pre_atc & valid_z
+
+    buy = valid & (z_vwap < -z_thresh) & (c_arr > o_arr)
+    sell = valid & (z_vwap > z_thresh) & (c_arr < o_arr)
+    hold = valid & ~buy & ~sell & (np.abs(z_vwap) > 0.5)
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
