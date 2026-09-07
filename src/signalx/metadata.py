@@ -12,6 +12,7 @@ VALID_CATEGORIES: frozenset[str] = frozenset(
         "volume",
         "candlestick",
         "smc",
+        "mean_reversion",
         "statistical",
         "composite",
     }
@@ -1670,7 +1671,107 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 6. STATISTICAL SIGNALS (11 signals)
+    # 7. MEAN REVERSION SIGNALS (12 signals)
+    # -------------------------------------------------------------------------
+    mr_definitions = [
+        (
+            "mr_connors_rsi2_regime_signal",
+            "Larry Connors RSI(2) Trend-Filtered Reversion (RSI(2) < 10 with Close > SMA200)",
+            "signalx_native",
+            "Close > SMA200 and RSI(2) < 10.0 (extreme short-term pullback in macro uptrend)",
+            "Close < SMA200 and RSI(2) > 90.0 (extreme short-term bounce in macro downtrend)",
+        ),
+        (
+            "mr_ou_process_spread_reversion_signal",
+            "Ornstein-Uhlenbeck (OU) Equilibrium Spread Reversion (30-bar rolling OU fit)",
+            "signalx_native",
+            "Spread deviation < -2.0 sigma with positive reversion rate (theta > 0)",
+            "Spread deviation > +2.0 sigma with positive reversion rate (theta > 0)",
+        ),
+        (
+            "mr_vwap_distance_zscore_signal",
+            "Rolling VWAP Distance Z-Score Stretch (20-bar rolling VWAP stretch)",
+            "signalx_native",
+            "Distance Z-Score < -2.0 (severely stretched below VWAP)",
+            "Distance Z-Score > +2.0 (severely stretched above VWAP)",
+        ),
+        (
+            "mr_bb_pct_b_hook_reversion_signal",
+            "Bollinger Bands %B Extreme Hook Re-entry (%B hooks back inside [0, 1])",
+            "signalx_native",
+            "Previous %B < 0.0 and current %B >= 0.0 with bullish close",
+            "Previous %B > 1.0 and current %B <= 1.0 with bearish close",
+        ),
+        (
+            "mr_keltner_atr_stretch_reentry_signal",
+            "Keltner Channel 3-ATR Re-entry Reversal (re-entry after 3-ATR channel breach)",
+            "signalx_native",
+            "Previous Low < EMA20 - 3*ATR and current Close >= EMA20 - 3*ATR",
+            "Previous High > EMA20 + 3*ATR and current Close <= EMA20 + 3*ATR",
+        ),
+        (
+            "mr_kurtosis_fat_tail_exhaustion_signal",
+            "Rolling Kurtosis Fat-Tail Shock Reversal (excess kurtosis > 3 with return Z-score > 2.5)",
+            "signalx_native",
+            "Excess kurtosis > 3.0 and return Z-Score < -2.5 with upward return hook",
+            "Excess kurtosis > 3.0 and return Z-Score > +2.5 with downward return hook",
+        ),
+        (
+            "mr_dual_ma_disparity_index_signal",
+            "Disparity Index Stretch (percentage disparity from SMA20 > 3.5%)",
+            "signalx_native",
+            "Disparity Index < -3.5% with bullish close",
+            "Disparity Index > +3.5% with bearish close",
+        ),
+        (
+            "mr_linreg_residual_zscore_signal",
+            "Linear Regression Residuals Z-Score Stretch (20-bar rolling regression residual)",
+            "signalx_native",
+            "Residual Z-Score < -2.0 (price deeply below regression line)",
+            "Residual Z-Score > +2.0 (price deeply above regression line)",
+        ),
+        (
+            "mr_wr_cci_double_oversold_signal",
+            "Williams %R & CCI Confluence Mean Reversion (dual extreme hook)",
+            "signalx_native",
+            "Williams %R < -85 and CCI < -150 with both hooking upward",
+            "Williams %R > -15 and CCI > +150 with both hooking downward",
+        ),
+        (
+            "mr_session_range_fade_signal",
+            "Intraday Session Initial Balance Fade (false extension beyond 30m IB range)",
+            "signalx_native",
+            "Price wicks above IB High by >0.2% but closes back inside IB",
+            "Price wicks below IB Low by >0.2% but closes back inside IB",
+        ),
+        (
+            "mr_volume_climax_absorption_reversion_signal",
+            "Volume Climax Absorption at Extremes (3x volume spike with rejection wick at 20-bar extreme)",
+            "signalx_native",
+            "Volume spike at 20-bar Low with lower rejection wick >= 40% and bullish close",
+            "Volume spike at 20-bar High with upper rejection wick >= 40% and bearish close",
+        ),
+        (
+            "mr_multi_period_stretch_consensus_signal",
+            "Multi-Period Deviation Consensus (simultaneous 10, 20, 50-bar stretch > 1.8 sigma)",
+            "signalx_native",
+            "Price simultaneously < mean - 1.8 sigma for 10, 20, and 50-bar windows",
+            "Price simultaneously > mean + 1.8 sigma for 10, 20, and 50-bar windows",
+        ),
+    ]
+    for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mr_definitions, start=1):
+        register_signal(
+            code=f"MR{idx:03d}_signal",
+            name=name,
+            category="mean_reversion",
+            description=desc,
+            library=lib,
+            buy_trigger=buy_t,
+            sell_trigger=sell_t,
+        )
+
+    # -------------------------------------------------------------------------
+    # 8. STATISTICAL SIGNALS (20 signals)
     # -------------------------------------------------------------------------
     stat_definitions = [
         (
