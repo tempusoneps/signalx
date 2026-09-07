@@ -5,8 +5,11 @@ import pandas as pd
 import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
+from signalx.signals.session_helper import extract_session_context
 from signalx.signals.volume import (
     VOLUME_SIGNAL_COLUMNS,
+    _calc_rolling_volume_shelf_zscore,
+    _calc_vn30_late_session_vwap_momentum,
     _calc_volume_spike_direction,
     _calc_vwap_band_reversal,
     generate_volume_signals,
@@ -46,15 +49,15 @@ def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
 EXPECTED_VOLUME_SIGNALS = VOLUME_SIGNAL_COLUMNS
 
 
-def test_volume_signals_all_32_columns_present():
-    """Verify generate_volume_signals produces exactly the expected volume signals."""
+def test_volume_signals_all_34_columns_present():
+    """Verify generate_volume_signals produces exactly the expected 34 volume signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_volume_signals(df)
 
-    assert len(EXPECTED_VOLUME_SIGNALS) == 32
+    assert len(EXPECTED_VOLUME_SIGNALS) == 34
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_VOLUME_SIGNALS:
@@ -65,6 +68,8 @@ def test_volume_signals_all_32_columns_present():
     assert "volume_rvol_time_bucket_signal" in res.columns
     assert "volume_cvd_divergence_signal" in res.columns
     assert "volume_stopping_climax_signal" in res.columns
+    assert "vol_rolling_volume_shelf_zscore_signal" in res.columns
+    assert "vlm_vn30_late_session_vwap_momentum_signal" in res.columns
 
 
 def test_volume_signals_all_states_valid():
@@ -102,7 +107,7 @@ def test_volume_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -117,7 +122,7 @@ def test_volume_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -137,7 +142,7 @@ def test_volume_signals_normalization():
     res = generate_volume_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
 
 
 def test_volume_signals_missing_columns():
@@ -154,7 +159,7 @@ def test_volume_signals_zero_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -168,7 +173,7 @@ def test_volume_signals_constant_volume():
     res = generate_volume_signals(df)
 
     assert len(res) == 50
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -193,7 +198,7 @@ def test_volume_signals_flat_data():
         res = generate_volume_signals(df_flat)
 
     assert len(res) == 50
-    assert len(res.columns) == 32
+    assert len(res.columns) == 34
     for col in res.columns:
         assert not res[col].isna().any()
         unique_vals = set(res[col].unique())
@@ -664,3 +669,122 @@ def test_stopping_climax_signal_direct():
     assert sig.iloc[21] == SignalState.BUY
     assert sig.iloc[22] == SignalState.SELL
     assert sig.iloc[10] == SignalState.NONE
+
+
+def test_calc_rolling_volume_shelf_zscore_direct():
+    """Verify rolling volume shelf Z-score triggers buy, sell, hold, and none."""
+    n = 35
+    # 1. Bullish scenario: steady price then sharp rally with volume expansion
+    close_up = pd.Series([100.0] * n)
+    volume_up = pd.Series([1000.0] * n)
+    for i in range(20, 26):
+        close_up.iloc[i] = 100.0 + (i - 19) * 3.0
+        volume_up.iloc[i] = 3000.0
+
+    sig_up = _calc_rolling_volume_shelf_zscore(close_up, volume_up, shelf_len=12)
+    assert isinstance(sig_up, pd.Series)
+    assert len(sig_up) == n
+    assert set(sig_up.unique()).issubset(ALL_SIGNAL_STATES)
+    # At bar 25: Z_shelf >= 0.5, RSI8 > 56, slope5 > 0, vol > vol_ma20 -> BUY
+    assert sig_up.iloc[25] == SignalState.BUY
+
+    # 2. Bearish scenario: steady price then sharp decline with volume expansion
+    close_down = pd.Series([100.0] * n)
+    volume_down = pd.Series([1000.0] * n)
+    for i in range(20, 26):
+        close_down.iloc[i] = 100.0 - (i - 19) * 3.0
+        volume_down.iloc[i] = 3000.0
+
+    sig_down = _calc_rolling_volume_shelf_zscore(close_down, volume_down, shelf_len=12)
+    assert sig_down.iloc[25] == SignalState.SELL
+
+    # 3. Flat scenario -> NONE
+    close_flat = pd.Series([100.0] * n)
+    volume_flat = pd.Series([1000.0] * n)
+    sig_flat = _calc_rolling_volume_shelf_zscore(close_flat, volume_flat, shelf_len=12)
+    assert sig_flat.iloc[25] == SignalState.NONE
+
+    # 4. Moderate stretch with slope5 > 0 but volume <= vol_ma20 -> HOLD
+    close_hold = pd.Series([100.0] * n)
+    volume_hold = pd.Series([1000.0] * n)
+    for i in range(20, 26):
+        close_hold.iloc[i] = 100.0 + (i - 19) * 0.8
+        volume_hold.iloc[i] = 800.0  # volume below vol_ma20 (~980)
+
+    sig_hold = _calc_rolling_volume_shelf_zscore(close_hold, volume_hold, shelf_len=12)
+    assert sig_hold.iloc[25] == SignalState.HOLD
+
+
+def test_calc_vn30_late_session_vwap_momentum_direct():
+    """Verify VN30 late session VWAP momentum triggers buy, sell, hold, and none."""
+    n = 50
+    # Synthetic session: 50 bars per session, late session is bar 40..47
+    # 1. Bullish breakout in late session
+    open_p = pd.Series([100.0] * n)
+    high = pd.Series([101.0] * n)
+    low = pd.Series([99.0] * n)
+    close = pd.Series([100.0] * n)
+    volume = pd.Series([1000.0] * n)
+
+    # Establish baseline VWAP around 100
+    # From bar 35 onwards, price moves up with high volume
+    for i in range(35, 48):
+        close.iloc[i] = 100.0 + (i - 34) * 0.8
+        open_p.iloc[i] = close.iloc[i] - 0.3
+        high.iloc[i] = close.iloc[i] + 0.5
+        low.iloc[i] = close.iloc[i] - 0.5
+        volume.iloc[i] = 2000.0
+
+    df_synth = pd.DataFrame(
+        {"open": open_p, "high": high, "low": low, "close": close, "volume": volume}
+    )
+    ctx = extract_session_context(df_synth)
+
+    sig = _calc_vn30_late_session_vwap_momentum(open_p, high, low, close, volume, ctx)
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == n
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+    # Outside active window (e.g. bar 15) must be NONE
+    assert sig.iloc[15] == SignalState.NONE
+    # Inside active window (bar 42..45) with strong VWAP stretch -> BUY
+    assert sig.iloc[45] == SignalState.BUY
+
+    # 2. Bearish breakdown in late session
+    open_d = pd.Series([100.0] * n)
+    high_d = pd.Series([101.0] * n)
+    low_d = pd.Series([99.0] * n)
+    close_d = pd.Series([100.0] * n)
+    volume_d = pd.Series([1000.0] * n)
+
+    for i in range(35, 48):
+        close_d.iloc[i] = 100.0 - (i - 34) * 0.8
+        open_d.iloc[i] = close_d.iloc[i] + 0.3
+        high_d.iloc[i] = close_d.iloc[i] + 0.5
+        low_d.iloc[i] = close_d.iloc[i] - 0.5
+        volume_d.iloc[i] = 2000.0
+
+    df_synth_d = pd.DataFrame(
+        {"open": open_d, "high": high_d, "low": low_d, "close": close_d, "volume": volume_d}
+    )
+    ctx_d = extract_session_context(df_synth_d)
+
+    sig_d = _calc_vn30_late_session_vwap_momentum(open_d, high_d, low_d, close_d, volume_d, ctx_d)
+    assert sig_d.iloc[45] == SignalState.SELL
+
+    # 3. Inside window with moderate stretch (|Z_vwap| > 0.30) but range_pct < 0.0012 -> HOLD
+    open_h = pd.Series([100.0] * n)
+    high_h = pd.Series([100.05] * n)
+    low_h = pd.Series([99.95] * n)
+    close_h = pd.Series([100.0] * n)
+    volume_h = pd.Series([1000.0] * n)
+    # Small drift, tiny range_pct < 0.0012, but std will be small so |Z| > 0.3
+    for i in range(38, 48):
+        close_h.iloc[i] = 100.03
+        high_h.iloc[i] = 100.05
+        low_h.iloc[i] = 99.95
+    df_synth_h = pd.DataFrame(
+        {"open": open_h, "high": high_h, "low": low_h, "close": close_h, "volume": volume_h}
+    )
+    ctx_h = extract_session_context(df_synth_h)
+    sig_h = _calc_vn30_late_session_vwap_momentum(open_h, high_h, low_h, close_h, volume_h, ctx_h)
+    assert sig_h.iloc[45] in (SignalState.HOLD, SignalState.NONE)

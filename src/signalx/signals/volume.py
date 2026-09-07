@@ -6,7 +6,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
-from signalx.signals.session_helper import extract_session_context
+from signalx.signals.session_helper import SessionContext, extract_session_context
 from signalx.utils import normalize_ohlcv
 
 VOLUME_SIGNAL_COLUMNS = [
@@ -42,6 +42,8 @@ VOLUME_SIGNAL_COLUMNS = [
     "volume_rvol_time_bucket_signal",
     "volume_cvd_divergence_signal",
     "volume_stopping_climax_signal",
+    "vol_rolling_volume_shelf_zscore_signal",
+    "vlm_vn30_late_session_vwap_momentum_signal",
 ]
 
 
@@ -807,8 +809,155 @@ def _calc_stopping_climax(
     )
 
 
+def _calc_rolling_volume_shelf_zscore(
+    close: pd.Series,
+    volume: pd.Series,
+    shelf_len: int = 12,
+) -> pd.Series:
+    """Calculate Rolling 12-Bar Volume Shelf & Variance Z-Score (VLM033).
+
+    V_shelf = sum_12(C * V) / sum_12(V)
+    V2_shelf = sum_12(C^2 * V) / sum_12(V)
+    Var_shelf = max(V2_shelf - V_shelf^2, 1e-8)
+    Z_shelf = (C - V_shelf) / sqrt(Var_shelf)
+
+    Triggers:
+        buy: Z_shelf >= 0.5 and RSI8 > 56 and slope5 > 0 and volume > SMA20(volume)
+        sell: Z_shelf <= -0.5 and RSI8 < 44 and slope5 < 0 and volume > SMA20(volume)
+        hold: |Z_shelf| > 0.2 and ((Z_shelf > 0 and slope5 >= 0) or (Z_shelf < 0 and slope5 <= 0))
+        none: default
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    sum_v = volume.rolling(shelf_len, min_periods=1).sum()
+    v_shelf = (close * volume).rolling(shelf_len, min_periods=1).sum() / (sum_v + 1e-8)
+    v2_shelf = ((close**2) * volume).rolling(shelf_len, min_periods=1).sum() / (sum_v + 1e-8)
+    var_shelf = np.maximum(v2_shelf - v_shelf**2, 1e-8)
+    z_shelf = (close - v_shelf) / np.sqrt(var_shelf)
+
+    rsi8 = ta.momentum.RSIIndicator(close, window=8, fillna=False).rsi()
+    slope5 = close.diff(5) / 5.0
+    vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    z_arr = z_shelf.to_numpy(dtype=float, na_value=np.nan)
+    rsi_arr = rsi8.to_numpy(dtype=float, na_value=np.nan)
+    slope_arr = slope5.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+    vma_arr = vol_ma20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(z_arr)
+        & ~np.isnan(rsi_arr)
+        & ~np.isnan(slope_arr)
+        & ~np.isnan(v_arr)
+        & ~np.isnan(vma_arr)
+    )
+
+    buy = valid & (z_arr >= 0.5) & (rsi_arr > 56.0) & (slope_arr > 0.0) & (v_arr > vma_arr)
+    sell = valid & (z_arr <= -0.5) & (rsi_arr < 44.0) & (slope_arr < 0.0) & (v_arr > vma_arr)
+    hold = (
+        valid
+        & (np.abs(z_arr) > 0.2)
+        & (((z_arr > 0.0) & (slope_arr >= 0.0)) | ((z_arr < 0.0) & (slope_arr <= 0.0)))
+        & ~buy
+        & ~sell
+    )
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
+def _calc_vn30_late_session_vwap_momentum(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """Calculate Late-Session VWAP Momentum Stretch (VLM034).
+
+    Active window: 13:20 - 14:15 (time_minutes >= 800 & <= 855; fallback: bar_in_session >= 40 & <= 47).
+    Session cumulative VWAP:
+        cum_vp = (close * volume).groupby(session_id).cumsum()
+        cum_v = volume.groupby(session_id).cumsum()
+        vwap = cum_vp / (cum_v + 1e-8)
+        vwap_diff = close - vwap
+        sigma_vwap = vwap_diff.groupby(session_id).transform(lambda s: s.expanding().std()).fillna(1.0).clip(lower=1e-4)
+        Z_vwap = vwap_diff / sigma_vwap
+    Intraday range expansion:
+        open_sess = open_p.groupby(session_id).transform("first")
+        high_cum = high.groupby(session_id).cummax()
+        low_cum = low.groupby(session_id).cummin()
+        range_pct = (high_cum - low_cum) / (open_sess + 1e-8)
+    RSI(8) = RSIIndicator(close, window=8).rsi()
+
+    Triggers (only active in window):
+        buy: Z_vwap >= 0.75 and RSI8 >= 54 and range_pct >= 0.0012
+        sell: Z_vwap <= -0.75 and RSI8 <= 42 and range_pct >= 0.0012
+        hold: |Z_vwap| > 0.30
+        none: outside window or neutral
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    is_datetime = pd.api.types.is_string_dtype(session_ctx.session_id) or (
+        len(session_ctx.session_id) > 0 and isinstance(session_ctx.session_id.iloc[0], str)
+    )
+
+    if is_datetime:
+        window_mask = (session_ctx.time_minutes >= 800) & (session_ctx.time_minutes <= 855)
+    else:
+        window_mask = (session_ctx.bar_in_session >= 40) & (session_ctx.bar_in_session <= 47)
+
+    cum_vp = (close * volume).groupby(session_ctx.session_id, sort=False).cumsum()
+    cum_v = volume.groupby(session_ctx.session_id, sort=False).cumsum()
+    vwap = cum_vp / (cum_v + 1e-8)
+
+    vwap_diff = close - vwap
+    sigma_vwap = (
+        vwap_diff.groupby(session_ctx.session_id, sort=False)
+        .transform(lambda s: s.expanding().std())
+        .fillna(1.0)
+        .clip(lower=1e-4)
+    )
+    z_vwap = vwap_diff / sigma_vwap
+
+    open_sess = open_p.groupby(session_ctx.session_id, sort=False).transform("first")
+    high_cum = high.groupby(session_ctx.session_id, sort=False).cummax()
+    low_cum = low.groupby(session_ctx.session_id, sort=False).cummin()
+    range_pct = (high_cum - low_cum) / (open_sess + 1e-8)
+
+    rsi8 = ta.momentum.RSIIndicator(close, window=8, fillna=False).rsi()
+
+    w_arr = window_mask.to_numpy(dtype=bool)
+    z_arr = z_vwap.to_numpy(dtype=float, na_value=np.nan)
+    r_arr = range_pct.to_numpy(dtype=float, na_value=np.nan)
+    rsi_arr = rsi8.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = ~np.isnan(z_arr) & ~np.isnan(r_arr) & ~np.isnan(rsi_arr)
+
+    buy = w_arr & valid & (z_arr >= 0.75) & (rsi_arr >= 54.0) & (r_arr >= 0.0012)
+    sell = w_arr & valid & (z_arr <= -0.75) & (rsi_arr <= 42.0) & (r_arr >= 0.0012)
+    hold = w_arr & valid & (np.abs(z_arr) > 0.30) & ~buy & ~sell
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 32 volume, flow, and VWAP signals from OHLCV dataframe.
+    """Generate all 34 volume, flow, and VWAP signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -820,7 +969,7 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 32 columns ending with '_signal', with values in
+        DataFrame containing 34 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -840,6 +989,7 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         low = df_norm["low"]
         close = df_norm["close"]
         volume = df_norm["volume"]
+        session_ctx = extract_session_context(df_norm)
 
         signals = pd.DataFrame(index=df_norm.index)
 
@@ -1029,6 +1179,20 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         # 29. Stopping Volume / Climax Exhaustion (1)
         signals["volume_stopping_climax_signal"] = _calc_stopping_climax(
             open_p, high, low, close, volume
+        )
+        pbar.update(1)
+
+        # 30. Rolling 12-Bar Volume Shelf & Variance Z-Score (1)
+        signals["vol_rolling_volume_shelf_zscore_signal"] = _calc_rolling_volume_shelf_zscore(
+            close, volume, shelf_len=12
+        )
+        pbar.update(1)
+
+        # 31. Late-Session VWAP Momentum Stretch (1)
+        signals["vlm_vn30_late_session_vwap_momentum_signal"] = (
+            _calc_vn30_late_session_vwap_momentum(
+                open_p, high, low, close, volume, session_ctx=session_ctx
+            )
         )
         pbar.update(1)
 
