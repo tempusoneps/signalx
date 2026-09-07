@@ -158,15 +158,15 @@ This document establishes the mandatory architectural rules and invariant constr
 
 ## Rule 7: Strict Category Partitioning
 - **Requirement**: Every signal must belong to exactly one of the 9 valid categories:
-  1. `trend` (Trend-following & Moving Averages) (52 signals)
+  1. `trend` (Trend-following & Moving Averages) (54 signals)
   2. `momentum` (Oscillators & Speed of Price Change) (39 signals)
-  3. `volatility` (Bands, Envelopes & Breakouts) (44 signals)
-  4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
-  5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
-  6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
+  3. `volatility` (Bands, Envelopes & Breakouts) (47 signals)
+  4. `volume` (Volume Dynamics & Flow Accumulation) (34 signals)
+  5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (29 signals)
+  6. `smc` (Smart Money Concepts & Structural Order Flow) (12 signals)
   7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (25 signals)
   8. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
-  9. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
+  9. `composite` (Consensus, Confluence & Ensemble Voting) (14 signals)
 
 ---
 
@@ -195,7 +195,7 @@ signalx/
 │   │   ├── AI_AGENT_GUIDELINE.md # Coding standards, commands, test performance rules
 │   │   ├── CONFIGURATION.md      # CLI options, dataframe schemas, parameters
 │   │   ├── RULE.md               # Core repository invariants and constraints
-│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 239 signals across 8 categories
+│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 274 signals across 9 categories
 │   │   ├── STRUCTURE.md          # Repository layout and module responsibilities
 │   │   └── USAGE.md              # Python API & CLI usage examples
 │   ├── superpowers/              # Spec and implementation plan documentation
@@ -215,16 +215,16 @@ signalx/
 │       ├── utils.py              # OHLCV validation, column normalization, I/O, stats
 │       └── signals/              # Category signal generator modules
 │           ├── __init__.py       # Dispatches all category generators
-│           ├── candlestick.py    # Candlestick geometry and price action patterns (28 signals)
-│           ├── composite.py      # Consensus and ensemble voting signals (13 signals)
+│           ├── candlestick.py    # Candlestick geometry and price action patterns (29 signals)
+│           ├── composite.py      # Consensus and ensemble voting signals (14 signals)
 │           ├── mean_reversion.py # Overbought/oversold reversals & statistical extremes (25 signals)
 │           ├── momentum.py       # Oscillators and momentum indicators (39 signals)
 │           ├── session_helper.py # VN30F1M intraday session context extraction utility
-│           ├── smc.py            # Smart Money Concepts, Order Flow, FVG & Liquidity (11 signals)
+│           ├── smc.py            # Smart Money Concepts, Order Flow, FVG & Liquidity (12 signals)
 │           ├── statistical.py    # Z-scores, linear regression, efficiency (20 signals)
-│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (52 signals)
-│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (44 signals)
-│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (32 signals)
+│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (54 signals)
+│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (47 signals)
+│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (34 signals)
 ├── tests/                        # Comprehensive unit and integration test suite
 │   ├── test_cli.py               # Tests for CLI subcommands and flag parsing
 │   ├── test_constants.py         # Tests for SignalState and ALL_SIGNAL_STATES
@@ -255,21 +255,21 @@ signalx/
 ### Core Library (`src/signalx/`)
 - `constants.py`: Holds `SignalState` class with strings `"buy"`, `"sell"`, `"hold"`, `"none"` and `ALL_SIGNAL_STATES` frozenset.
 - `utils.py`: Provides input data sanitation (`normalize_ohlcv`), case-insensitive column aliasing, DataFrame I/O (`load_dataframe`, `save_dataframe`), and frequency metrics (`compute_signal_stats`).
-- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 264 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
+- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 274 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
 - `core.py`: Exposes `generate_signals(df, drop_ohlcv=False, show_progress=False, naming="code")` which coordinates normalization, dispatches category signal extractors, applies requested naming convention (`"code"` or `"semantic"`), and aggregates results.
 - `cli.py`: Implements the `signalx` command-line executable using `argparse` (subcommands: `generate`, `inspect`, `stats`, `list`).
 
 ### Signal Generators (`src/signalx/signals/`)
 - `session_helper.py`: Provides `extract_session_context(df) -> SessionContext` — extracts VN30F1M intraday session IDs, bar positions, and time windows (morning open 08:45-09:30, afternoon open 13:00-13:30, pre-ATC 14:00-14:25). Auto-detects datetime columns with vectorized fallback for synthetic data.
-- `trend.py`: Moving average crossovers (SMA, EMA, DEMA, TEMA, HMA, VWMA), MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, Vortex, TRIX, KAMA, TMA, MA Alignment, Pullback, Micro Trend/Reversal, TII (52 signals).
+- `trend.py`: Moving average crossovers (SMA, EMA, DEMA, TEMA, HMA, VWMA), MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, Vortex, TRIX, KAMA, TMA, MA Alignment, Pullback, Micro Trend/Reversal, TII (54 signals).
 - `momentum.py`: RSI multi-period, Stochastics, StochRSI, Williams %R, CCI, ROC, MFI, TSI, Fisher Transform, Awesome Oscillator, Ultimate Oscillator, CMO, Connors RSI, RSI Divergence, MFI Reversal, Momentum Shift, VN30F1M Afternoon Open Breakout (39 signals).
-- `volatility.py`: Bollinger Bands breakouts/bounces, %B reversals, Donchian Channels, Keltner Channels, TTM Squeeze, Bandwidth Expansion, ATR Trailing Stops, Chaikin Volatility, Historical Volatility Ratio, BB Rejection, Compression Breakouts, LinReg Channels, Envelopes, VN30F1M IB 30m Breakout, VN30F1M Pre-ATC Squeeze (44 signals).
-- `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM), VSA Confirmation, VPT Divergence, Volume Trends, VN30F1M Session VWAP Cross, RVOL Time Bucket, CVD Divergence, Stopping Climax (32 signals).
-- `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms, Couple Candlestick, Fakey Pattern, Gap Up/Down, Body Size Expansion, Wick Rejection, Body Direction, Close Strength, Price Rejection, Break & Retest, Trend Exhaustion, Final Push, Thrust Bar, NR7, Wide Range Reversal (28 signals).
-- `smc.py`: Fair Value Gaps (FVG mitigation & retest), Order Block (OB) retest, Break of Structure (BOS), Change of Character (CHoCH), Market Structure Break (MSB), Liquidity Sweeps, Equal Highs/Lows (EQH/EQL), ICT Judas Swing, Inducement (IDM) sweep, VN30F1M PDH/PDL Sweep Reversal (11 signals).
+- `volatility.py`: Bollinger Bands breakouts/bounces, %B reversals, Donchian Channels, Keltner Channels, TTM Squeeze, Bandwidth Expansion, ATR Trailing Stops, Chaikin Volatility, Historical Volatility Ratio, BB Rejection, Compression Breakouts, LinReg Channels, Envelopes, VN30F1M IB 30m Breakout, VN30F1M Pre-ATC Squeeze (47 signals).
+- `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM), VSA Confirmation, VPT Divergence, Volume Trends, VN30F1M Session VWAP Cross, RVOL Time Bucket, CVD Divergence, Stopping Climax (34 signals).
+- `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms, Couple Candlestick, Fakey Pattern, Gap Up/Down, Body Size Expansion, Wick Rejection, Body Direction, Close Strength, Price Rejection, Break & Retest, Trend Exhaustion, Final Push, Thrust Bar, NR7, Wide Range Reversal (29 signals).
+- `smc.py`: Fair Value Gaps (FVG mitigation & retest), Order Block (OB) retest, Break of Structure (BOS), Change of Character (CHoCH), Market Structure Break (MSB), Liquidity Sweeps, Equal Highs/Lows (EQH/EQL), ICT Judas Swing, Inducement (IDM) sweep, VN30F1M PDH/PDL Sweep Reversal (12 signals).
 - `mean_reversion.py`: Connors RSI(2), Ornstein-Uhlenbeck spread reversion, VWAP distance Z-score stretch, Bollinger Bands %B extreme hook, Keltner Channel 3-ATR re-entry, Kurtosis fat-tail shock, Disparity index stretch, Linear regression residual Z-score, Williams %R & CCI confluence hook, Session IB range fade, Volume climax absorption, Multi-period deviation consensus, Lehmann short-term reversal, Lo & MacKinlay variance ratio, Ehlers roofing filter, Amihud illiquidity exhaustion, Bollinger Bands W-Bottom & M-Top, VN30 Morning ATO Gap Fade, Opening Drive Reversal, Afternoon Open Trap Reversal, Pre-ATC Snapback to VWAP, PDH/PDL False Breakout Fade, Midday Lunch Range Fade, Intraday Thrust Exhaustion Fade, Session VWAP Band Reversal (25 signals).
 - `statistical.py`: Rolling Price Z-Scores, Rolling Return Z-Scores, Kaufman Efficiency Ratio (KER), Choppiness Index, Rolling Quantile Extremes, Linear Regression Slope & Price Cross, MA Stretch Z-Score, Hurst Proxy, Range Mid Reversion, Price Acceleration (20 signals).
-- `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence, MACD Hist + Candlestick confluence, VN30F1M Intraday Confluence (13 signals).
+- `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence, MACD Hist + Candlestick confluence, VN30F1M Intraday Confluence (14 signals).
 - `__init__.py`: Aggregates all category functions into `run_all_signal_generators(df)`.
 
 ---
@@ -659,26 +659,26 @@ uv run signalx list --category mean_reversion
 
 ---
 
-# SignalX Signals Catalog (264 Signals)
+# SignalX Signals Catalog (274 Signals)
 
-`signalx` provides 264 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 274 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
 | Category | Count | Primary Focus |
 | :--- | :--- | :--- |
-| **Candlestick** | 28 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
-| **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
+| **Candlestick** | 29 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
+| **Composite** | 14 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
 | **Mean Reversion** | 25 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
 | **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
-| **SMC** | 11 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
+| **SMC** | 12 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
-| **Trend** | 52 | Directional trend following, moving average crossovers, MACD, and regime tracking |
-| **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
-| **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **264** | **Full Quantitative Feature Suite** |
+| **Trend** | 54 | Directional trend following, moving average crossovers, MACD, and regime tracking |
+| **Volatility** | 47 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
+| **Volume** | 34 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
+| **Total** | **274** | **Full Quantitative Feature Suite** |
 
-## Candlestick Signals (28 Signals)
+## Candlestick Signals (29 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -710,8 +710,9 @@ uv run signalx list --category mean_reversion
 | `CDL035_signal` | `cdl_thrust_bar_signal` | Thrust Bar (Body >= 75% range and >= 1.8x SMA20 body) | `signalx_native` | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close > Open (Bullish thrust) | Body >= 75% range, Body >= 1.8 * SMA20(Body), and Close < Open (Bearish thrust) |
 | `CDL036_signal` | `cdl_narrow_range_7_breakout_signal` | Narrow Range 7 (NR7) volatility compression breakout | `signalx_native` | Close breaks above High of NR7 bar (Bullish NR7 breakout) | Close breaks below Low of NR7 bar (Bearish NR7 breakdown) |
 | `CDL037_signal` | `cdl_wide_range_reversal_signal` | Wide Range Reversal (Range >= 2.5x SMA20 range with extreme close) | `signalx_native` | Range >= 2.5 * SMA20(Range) and Close finishes in top 30% of bar | Range >= 2.5 * SMA20(Range) and Close finishes in bottom 30% of bar |
+| `CDL029_signal` | `cdl_body_atr_conviction_breakout_signal` | Body to ATR Volatility Conviction Breakout with 10-bar Range Extension | `signalx_native` | Close breaks above 10-bar high with Body/ATR >= 0.20 and Close > EMA55 | Close breaks below 10-bar low with Body/ATR <= -0.20 and Close < EMA55 |
 
-## Composite Signals (13 Signals)
+## Composite Signals (14 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -728,6 +729,7 @@ uv run signalx list --category mean_reversion
 | `CMP011_signal` | `comp_squeeze_momentum_volume_surge_signal` | Squeeze Momentum Breakout with Volume Surge | `signalx_native` | Bullish Squeeze Pro breakout release with Volume >= 1.5x SMA20(Volume) | Bearish Squeeze Pro breakdown release with Volume >= 1.5x SMA20(Volume) |
 | `CMP012_signal` | `comp_master_ensemble_v2_signal` | Master Ensemble v2: Advanced weighted consensus across all library signals (>=30% threshold) | `signalx_native` | >=30% of all active signals vote BUY and buy votes exceed sell votes | >=30% of all active signals vote SELL and sell votes exceed buy votes |
 | `CMP013_signal` | `comp_vn30_intraday_confluence_signal` | VN30F1M 5m intraday confluence: session VWAP bearing + RVOL surge + session open momentum alignment | `signalx_native` | Price above session VWAP, RVOL surge bullish, and session open breakout aligned bullish | Price below session VWAP, RVOL surge bearish, and session open breakout aligned bearish |
+| `CMP014_signal` | `comp_keltner_stochrsi_breakout_signal` | Keltner Channel 20/2.0 & StochRSI Confluence Breakout with Volume Confirmation | `signalx_native` | Close breaks above KC upper band with StochRSI K > 65, Close > EMA55, and Volume > SMA20(Volume) | Close breaks below KC lower band with StochRSI K < 35, Close < EMA55, and Volume > SMA20(Volume) |
 
 ## Momentum Signals (39 Signals)
 
@@ -773,7 +775,7 @@ uv run signalx list --category mean_reversion
 | `MOM038_signal` | `mom_demarker_indicator_cross_signal` | Tom DeMarker Indicator (DeM 14) 0.30/0.70 threshold crossover | `signalx_native` | DeMarker 14 crosses above 0.30 from oversold zone | DeMarker 14 crosses below 0.70 from overbought zone |
 | `MOM039_signal` | `mom_afternoon_open_breakout_signal` | VN30F1M 5m afternoon session open (13:00-13:30) momentum breakout above/below morning range | `signalx_native` | Close in afternoon open breaks above morning session high (bullish afternoon open breakout) | Close in afternoon open breaks below morning session low (bearish afternoon open breakdown) |
 
-## SMC Signals (11 Signals)
+## SMC Signals (12 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -788,6 +790,7 @@ uv run signalx list --category mean_reversion
 | `SMC009_signal` | `smc_judas_swing_signal` | ICT Judas Swing false opening breakout & reversal | `signalx_native` | Low sweeps 5-bar low then closes above midpoint and open (Bullish Judas Swing) | High sweeps 5-bar high then closes below midpoint and open (Bearish Judas Swing) |
 | `SMC010_signal` | `smc_inducement_sweep_signal` | Inducement (IDM) minor liquidity sweep & wick rejection | `signalx_native` | Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement) | High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement) |
 | `SMC011_signal` | `smc_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
+| `SMC012_signal` | `smc_morning_midpoint_acceptance_signal` | Morning Midpoint Acceptance and Afternoon Expansion Breakout | `signalx_native` | Afternoon breakout above morning high with 4-bar acceptance >= 50% above midpoint and RSI8 > 54 | Afternoon breakdown below morning low with 4-bar acceptance >= 50% below midpoint and RSI8 < 46 |
 
 ## Mean Reversion Signals (25 Signals)
 
@@ -844,7 +847,7 @@ uv run signalx list --category mean_reversion
 | `STA019_signal` | `stat_variance_ratio_test_signal` | Lo-MacKinlay Variance Ratio Test (q=5, 30-period, VR > 1.25 trending structure) | `signalx_native` | Variance Ratio > 1.25 and ROC5 > 0 (Trending bullish market structure) | Variance Ratio > 1.25 and ROC5 < 0 (Trending bearish market structure) |
 | `STA020_signal` | `stat_rolling_skewness_reversal_signal` | 20-period Rolling Return Skewness Reversal (Skew < -1.5 panic absorption / > +1.5 euphoria exhaustion) | `signalx_native` | Return Skewness 20 < -1.50 and Close > Close[1] (Panic selling absorption reversal buy) | Return Skewness 20 > +1.50 and Close < Close[1] (Euphoria exhaustion reversal sell) |
 
-## Trend Signals (52 Signals)
+## Trend Signals (54 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -900,8 +903,10 @@ uv run signalx list --category mean_reversion
 | `TRD051_signal` | `trend_alligator_lips_jaw_cross_signal` | Bill Williams Alligator Lips (5, shift 3) and Jaw (13, shift 8) crossover | `signalx_native` | Alligator Lips crosses above Alligator Jaw | Alligator Lips crosses below Alligator Jaw |
 | `TRD052_signal` | `trend_alma_cross_9_signal` | Arnaud Legoux Moving Average (ALMA 9, offset 0.85, sigma 6) price crossover | `pandas_ta` | Close crosses above ALMA 9 | Close crosses below ALMA 9 |
 | `TRD053_signal` | `trend_zero_lag_ema_cross_21_signal` | Zero-Lag EMA (ZLEMA 21) price crossover | `signalx_native` | Close crosses above ZLEMA 21 | Close crosses below ZLEMA 21 |
+| `TRD054_signal` | `trend_vn30_prior_auction_bias_signal` | VN30 Prior Auction Bias shifted by 1 full session (evaluated near session close, applied next session) | `signalx_native` | Prior session long bias with Close > EMA55 and RSI21 > 50 | Prior session short bias with Close < EMA55 and RSI21 < 50 |
+| `TRD055_signal` | `trend_vn30_asymmetric_persistence_signal` | VN30 Intraday Asymmetric Directional Persistence (session range position > 0.79 or short persistence >= 0.42) | `signalx_native` | Session range position > 0.79 with DI+ > DI-, slope8 > 0, and RSI5 > 60 | Short persistence >= 0.42 with DI- > DI+, slope8 < 0, and RSI5 < 40 |
 
-## Volatility Signals (44 Signals)
+## Volatility Signals (47 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -949,8 +954,11 @@ uv run signalx list --category mean_reversion
 | `VOL042_signal` | `vol_dual_thrust_range_breakout_signal` | Dual Thrust 5-period range breakout | `signalx_native` | Close > Open + 0.5 * Range(5) | Close < Open - 0.5 * Range(5) |
 | `VOL043_signal` | `vol_ib_breakout_30m_signal` | VN30F1M 5m Initial Balance (first 6 bars, 08:45-09:15) breakout or trap reversal | `signalx_native` | Close breaks above IB High and sustains (momentum breakout) | Close breaks below IB Low and sustains, or false breakout reversal (trap) |
 | `VOL044_signal` | `vol_pre_atc_squeeze_signal` | VN30F1M 5m Pre-ATC session (14:00-14:25) volatility squeeze and breakout | `signalx_native` | Bollinger Band width below 20th percentile then expands with bullish candle (pre-ATC squeeze breakout long) | Bollinger Band width below 20th percentile then expands with bearish candle (pre-ATC squeeze breakout short) |
+| `VOL045_signal` | `vol_micro_channel_4_breakout_signal` | Micro Channel 4-Bar Breakout with EMA55 and Volume Confirmation | `signalx_native` | Close breaks above 4-bar high with Close > EMA55, RSI21 > 53, and Volume > SMA20(Volume) | Close breaks below 4-bar low with Close < EMA55, RSI21 < 47, and Volume > SMA20(Volume) |
+| `VOL046_signal` | `vol_lunch_range_breakout_signal` | Midday Lunch-Range (11:00-12:55) Breakout in Afternoon Window (>= 13:00) | `signalx_native` | Afternoon breakout above lunch high with strong close position, slope5 > 0, and RSI8 > 55 | Afternoon breakdown below lunch low with weak close position, slope5 < 0, and RSI8 < 45 |
+| `VOL047_signal` | `vol_close_to_close_donchian_signal` | Close-to-Close Donchian 20 Channel Breakout with Trend and Volume Confirmation | `signalx_native` | Close breaks above 20-bar close maximum with Close > EMA55 and Volume > SMA20(Volume) | Close breaks below 20-bar close minimum with Close < EMA55 and Volume > SMA20(Volume) |
 
-## Volume Signals (32 Signals)
+## Volume Signals (34 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -986,3 +994,5 @@ uv run signalx list --category mean_reversion
 | `VLM030_signal` | `volume_rvol_time_bucket_signal` | VN30F1M 5m Relative Volume normalized by time-of-day bucket (RVOL >= 2.0 threshold) | `signalx_native` | RVOL >= 2.0 and green candle (bullish high-volume surge in time bucket) | RVOL >= 2.0 and red candle (bearish high-volume surge in time bucket) |
 | `VLM031_signal` | `volume_cvd_divergence_signal` | VN30F1M 5m Cumulative Volume Delta (CVD) intraday proxy divergence vs price extremes (10 bars) | `signalx_native` | CVD makes higher low while price makes lower low (bullish CVD divergence) | CVD makes lower high while price makes higher high (bearish CVD divergence) |
 | `VLM032_signal` | `volume_stopping_climax_signal` | VN30F1M 5m stopping volume climax (Volume >= 2.5x SMA20, wick >= 40% range, absorption close) | `signalx_native` | Volume climax with long lower wick and close in upper half (bullish absorption) | Volume climax with long upper wick and close in lower half (bearish absorption) |
+| `VLM033_signal` | `volume_rolling_shelf_zscore_signal` | Rolling 12-Bar Volume Shelf & Variance Z-Score Stretch | `signalx_native` | Shelf Z-score >= 0.5 with RSI8 > 56, slope5 > 0, and Volume > SMA20(Volume) | Shelf Z-score <= -0.5 with RSI8 < 44, slope5 < 0, and Volume > SMA20(Volume) |
+| `VLM034_signal` | `volume_vn30_late_session_vwap_momentum_signal` | Late-Session (13:20-14:15) VWAP Momentum Stretch with Intraday Range Expansion | `signalx_native` | VWAP Z-score >= 0.75 with RSI8 >= 54 and session range expansion >= 0.12% | VWAP Z-score <= -0.75 with RSI8 <= 42 and session range expansion >= 0.12% |

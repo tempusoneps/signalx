@@ -60,15 +60,15 @@ This document establishes the mandatory architectural rules and invariant constr
 
 ## Rule 7: Strict Category Partitioning
 - **Requirement**: Every signal must belong to exactly one of the 9 valid categories:
-  1. `trend` (Trend-following & Moving Averages) (52 signals)
+  1. `trend` (Trend-following & Moving Averages) (54 signals)
   2. `momentum` (Oscillators & Speed of Price Change) (39 signals)
-  3. `volatility` (Bands, Envelopes & Breakouts) (44 signals)
-  4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
-  5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
-  6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
+  3. `volatility` (Bands, Envelopes & Breakouts) (47 signals)
+  4. `volume` (Volume Dynamics & Flow Accumulation) (34 signals)
+  5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (29 signals)
+  6. `smc` (Smart Money Concepts & Structural Order Flow) (12 signals)
   7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (25 signals)
   8. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
-  9. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
+  9. `composite` (Consensus, Confluence & Ensemble Voting) (14 signals)
 
 ---
 

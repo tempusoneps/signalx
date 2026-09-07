@@ -15,7 +15,7 @@ signalx/
 │   │   ├── AI_AGENT_GUIDELINE.md # Coding standards, commands, test performance rules
 │   │   ├── CONFIGURATION.md      # CLI options, dataframe schemas, parameters
 │   │   ├── RULE.md               # Core repository invariants and constraints
-│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 239 signals across 8 categories
+│   │   ├── SIGNALS_CATALOG.md    # Catalog of all 274 signals across 9 categories
 │   │   ├── STRUCTURE.md          # Repository layout and module responsibilities
 │   │   └── USAGE.md              # Python API & CLI usage examples
 │   ├── superpowers/              # Spec and implementation plan documentation
@@ -35,16 +35,16 @@ signalx/
 │       ├── utils.py              # OHLCV validation, column normalization, I/O, stats
 │       └── signals/              # Category signal generator modules
 │           ├── __init__.py       # Dispatches all category generators
-│           ├── candlestick.py    # Candlestick geometry and price action patterns (28 signals)
-│           ├── composite.py      # Consensus and ensemble voting signals (13 signals)
+│           ├── candlestick.py    # Candlestick geometry and price action patterns (29 signals)
+│           ├── composite.py      # Consensus and ensemble voting signals (14 signals)
 │           ├── mean_reversion.py # Overbought/oversold reversals & statistical extremes (25 signals)
 │           ├── momentum.py       # Oscillators and momentum indicators (39 signals)
 │           ├── session_helper.py # VN30F1M intraday session context extraction utility
-│           ├── smc.py            # Smart Money Concepts, Order Flow, FVG & Liquidity (11 signals)
+│           ├── smc.py            # Smart Money Concepts, Order Flow, FVG & Liquidity (12 signals)
 │           ├── statistical.py    # Z-scores, linear regression, efficiency (20 signals)
-│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (52 signals)
-│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (44 signals)
-│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (32 signals)
+│           ├── trend.py          # Moving averages, MACD, SuperTrend, ADX (54 signals)
+│           ├── volatility.py     # Bollinger Bands, Donchian, Keltner, ATR (47 signals)
+│           └── volume.py         # OBV, CMF, VWAP, Volume Spikes (34 signals)
 ├── tests/                        # Comprehensive unit and integration test suite
 │   ├── test_cli.py               # Tests for CLI subcommands and flag parsing
 │   ├── test_constants.py         # Tests for SignalState and ALL_SIGNAL_STATES
@@ -75,19 +75,19 @@ signalx/
 ### Core Library (`src/signalx/`)
 - `constants.py`: Holds `SignalState` class with strings `"buy"`, `"sell"`, `"hold"`, `"none"` and `ALL_SIGNAL_STATES` frozenset.
 - `utils.py`: Provides input data sanitation (`normalize_ohlcv`), case-insensitive column aliasing, DataFrame I/O (`load_dataframe`, `save_dataframe`), and frequency metrics (`compute_signal_stats`).
-- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 264 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
+- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 274 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
 - `core.py`: Exposes `generate_signals(df, drop_ohlcv=False, show_progress=False, naming="code")` which coordinates normalization, dispatches category signal extractors, applies requested naming convention (`"code"` or `"semantic"`), and aggregates results.
 - `cli.py`: Implements the `signalx` command-line executable using `argparse` (subcommands: `generate`, `inspect`, `stats`, `list`).
 
 ### Signal Generators (`src/signalx/signals/`)
 - `session_helper.py`: Provides `extract_session_context(df) -> SessionContext` — extracts VN30F1M intraday session IDs, bar positions, and time windows (morning open 08:45-09:30, afternoon open 13:00-13:30, pre-ATC 14:00-14:25). Auto-detects datetime columns with vectorized fallback for synthetic data.
-- `trend.py`: Moving average crossovers (SMA, EMA, DEMA, TEMA, HMA, VWMA), MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, Vortex, TRIX, KAMA, TMA, MA Alignment, Pullback, Micro Trend/Reversal, TII (52 signals).
+- `trend.py`: Moving average crossovers (SMA, EMA, DEMA, TEMA, HMA, VWMA), MACD variants, SuperTrend, Parabolic SAR, Aroon, ADX/DMI, Ichimoku Cloud, Vortex, TRIX, KAMA, TMA, MA Alignment, Pullback, Micro Trend/Reversal, TII (54 signals).
 - `momentum.py`: RSI multi-period, Stochastics, StochRSI, Williams %R, CCI, ROC, MFI, TSI, Fisher Transform, Awesome Oscillator, Ultimate Oscillator, CMO, Connors RSI, RSI Divergence, MFI Reversal, Momentum Shift, VN30F1M Afternoon Open Breakout (39 signals).
-- `volatility.py`: Bollinger Bands breakouts/bounces, %B reversals, Donchian Channels, Keltner Channels, TTM Squeeze, Bandwidth Expansion, ATR Trailing Stops, Chaikin Volatility, Historical Volatility Ratio, BB Rejection, Compression Breakouts, LinReg Channels, Envelopes, VN30F1M IB 30m Breakout, VN30F1M Pre-ATC Squeeze (44 signals).
-- `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM), VSA Confirmation, VPT Divergence, Volume Trends, VN30F1M Session VWAP Cross, RVOL Time Bucket, CVD Divergence, Stopping Climax (32 signals).
-- `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms, Couple Candlestick, Fakey Pattern, Gap Up/Down, Body Size Expansion, Wick Rejection, Body Direction, Close Strength, Price Rejection, Break & Retest, Trend Exhaustion, Final Push, Thrust Bar, NR7, Wide Range Reversal (28 signals).
-- `smc.py`: Fair Value Gaps (FVG mitigation & retest), Order Block (OB) retest, Break of Structure (BOS), Change of Character (CHoCH), Market Structure Break (MSB), Liquidity Sweeps, Equal Highs/Lows (EQH/EQL), ICT Judas Swing, Inducement (IDM) sweep, VN30F1M PDH/PDL Sweep Reversal (11 signals).
+- `volatility.py`: Bollinger Bands breakouts/bounces, %B reversals, Donchian Channels, Keltner Channels, TTM Squeeze, Bandwidth Expansion, ATR Trailing Stops, Chaikin Volatility, Historical Volatility Ratio, BB Rejection, Compression Breakouts, LinReg Channels, Envelopes, VN30F1M IB 30m Breakout, VN30F1M Pre-ATC Squeeze (47 signals).
+- `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM), VSA Confirmation, VPT Divergence, Volume Trends, VN30F1M Session VWAP Cross, RVOL Time Bucket, CVD Divergence, Stopping Climax (34 signals).
+- `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms, Couple Candlestick, Fakey Pattern, Gap Up/Down, Body Size Expansion, Wick Rejection, Body Direction, Close Strength, Price Rejection, Break & Retest, Trend Exhaustion, Final Push, Thrust Bar, NR7, Wide Range Reversal (29 signals).
+- `smc.py`: Fair Value Gaps (FVG mitigation & retest), Order Block (OB) retest, Break of Structure (BOS), Change of Character (CHoCH), Market Structure Break (MSB), Liquidity Sweeps, Equal Highs/Lows (EQH/EQL), ICT Judas Swing, Inducement (IDM) sweep, VN30F1M PDH/PDL Sweep Reversal (12 signals).
 - `mean_reversion.py`: Connors RSI(2), Ornstein-Uhlenbeck spread reversion, VWAP distance Z-score stretch, Bollinger Bands %B extreme hook, Keltner Channel 3-ATR re-entry, Kurtosis fat-tail shock, Disparity index stretch, Linear regression residual Z-score, Williams %R & CCI confluence hook, Session IB range fade, Volume climax absorption, Multi-period deviation consensus, Lehmann short-term reversal, Lo & MacKinlay variance ratio, Ehlers roofing filter, Amihud illiquidity exhaustion, Bollinger Bands W-Bottom & M-Top, VN30 Morning ATO Gap Fade, Opening Drive Reversal, Afternoon Open Trap Reversal, Pre-ATC Snapback to VWAP, PDH/PDL False Breakout Fade, Midday Lunch Range Fade, Intraday Thrust Exhaustion Fade, Session VWAP Band Reversal (25 signals).
 - `statistical.py`: Rolling Price Z-Scores, Rolling Return Z-Scores, Kaufman Efficiency Ratio (KER), Choppiness Index, Rolling Quantile Extremes, Linear Regression Slope & Price Cross, MA Stretch Z-Score, Hurst Proxy, Range Mid Reversion, Price Acceleration (20 signals).
-- `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence, MACD Hist + Candlestick confluence, VN30F1M Intraday Confluence (13 signals).
+- `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence, MACD Hist + Candlestick confluence, VN30F1M Intraday Confluence (14 signals).
 - `__init__.py`: Aggregates all category functions into `run_all_signal_generators(df)`.
