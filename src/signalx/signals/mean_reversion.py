@@ -896,6 +896,85 @@ def _calc_ehlers_roofing_filter_reversion(
     )
 
 
+def _calc_amihud_liquidity_exhaustion(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    z_window: int = 20,
+    extreme_window: int = 15,
+    z_thresh: float = 2.0,
+) -> pd.Series:
+    """Amihud (2002) Illiquidity Shock & Exhaustion Reversion (MR016).
+
+    Measures sudden spikes in ILLIQ = |r_t| / (Volume_t * Close_t) at rolling price extremes
+    accompanied by long rejection wicks.
+    Buy: ILLIQ Z-score > z_thresh at extreme Low with lower wick >= 35% and Close > Open
+    Sell: ILLIQ Z-score > z_thresh at extreme High with upper wick >= 35% and Close < Open
+    """
+    n = len(close)
+    if n < max(z_window, extreme_window) + 2:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    v_arr = volume.to_numpy(dtype=float, na_value=np.nan)
+    c_prev = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+
+    valid_ret = ~np.isnan(c_arr) & ~np.isnan(c_prev) & (c_prev > 0)
+    abs_ret = np.zeros(n, dtype=float)
+    np.divide(np.abs(c_arr - c_prev), c_prev, out=abs_ret, where=valid_ret)
+
+    dvol = c_arr * v_arr
+    valid_illiq = valid_ret & ~np.isnan(v_arr) & (dvol > 0)
+    illiq = np.zeros(n, dtype=float)
+    np.divide(abs_ret * 1e6, dvol, out=illiq, where=valid_illiq)
+
+    illiq_s = pd.Series(illiq, index=close.index)
+    mean_illiq = illiq_s.rolling(z_window).mean().to_numpy(dtype=float, na_value=np.nan)
+    std_illiq = illiq_s.rolling(z_window).std().to_numpy(dtype=float, na_value=np.nan)
+
+    valid_z = valid_illiq & ~np.isnan(mean_illiq) & ~np.isnan(std_illiq) & (std_illiq > 1e-14)
+    z_illiq = np.zeros(n, dtype=float)
+    np.divide(illiq - mean_illiq, std_illiq, out=z_illiq, where=valid_z)
+
+    rng = np.maximum(h_arr - l_arr, 1e-12)
+    body_low = np.minimum(o_arr, c_arr)
+    body_high = np.maximum(o_arr, c_arr)
+    lower_wick_pct = (body_low - l_arr) / rng
+    upper_wick_pct = (h_arr - body_high) / rng
+
+    low_roll = low.shift(1).rolling(extreme_window).min().to_numpy(dtype=float, na_value=np.nan)
+    high_roll = high.shift(1).rolling(extreme_window).max().to_numpy(dtype=float, na_value=np.nan)
+
+    is_low_extreme = l_arr <= low_roll * 1.002
+    is_high_extreme = h_arr >= high_roll * 0.998
+
+    buy = (
+        valid_z & (z_illiq > z_thresh) & is_low_extreme & (lower_wick_pct >= 0.35) & (c_arr > o_arr)
+    )
+    sell = (
+        valid_z
+        & (z_illiq > z_thresh)
+        & is_high_extreme
+        & (upper_wick_pct >= 0.35)
+        & (c_arr < o_arr)
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell],
+            [SignalState.BUY, SignalState.SELL],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

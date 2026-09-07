@@ -8,6 +8,7 @@ import pandas as pd
 from signalx.constants import ALL_SIGNAL_STATES
 from signalx.signals.mean_reversion import (
     MEAN_REVERSION_SIGNAL_COLUMNS,
+    _calc_amihud_liquidity_exhaustion,
     _calc_bb_pct_b_hook_reversion,
     _calc_connors_rsi2_regime,
     _calc_dual_ma_disparity_index,
@@ -202,5 +203,14 @@ def test_calc_lo_mackinlay_variance_ratio():
 def test_calc_ehlers_roofing_filter_reversion():
     df = make_synthetic_ohlcv(150)
     sig = _calc_ehlers_roofing_filter_reversion(df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_amihud_liquidity_exhaustion():
+    df = make_synthetic_ohlcv(120)
+    sig = _calc_amihud_liquidity_exhaustion(
+        df["open"], df["high"], df["low"], df["close"], df["volume"]
+    )
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
