@@ -1353,7 +1353,7 @@ def _calc_close_to_close_donchian(
     Triggers:
         buy: close > cdc_upper and close > ema55 and volume > vol_ma20
         sell: close < cdc_lower and close < ema55 and volume > vol_ma20
-        hold: (close > ema55 and close >= cdc_lower) | (close < ema55 and close <= cdc_upper)
+        hold: (close >= cdc_upper and close > ema55) | (close <= cdc_lower and close < ema55)
         none: default
     """
     if len(close) == 0:
@@ -1382,7 +1382,7 @@ def _calc_close_to_close_donchian(
 
     buy = valid & (c > upper) & (c > e55) & (v > vma)
     sell = valid & (c < lower) & (c < e55) & (v > vma)
-    hold = valid & ~buy & ~sell & (((c > e55) & (c >= lower)) | ((c < e55) & (c <= upper)))
+    hold = valid & ~buy & ~sell & (((c >= upper) & (c > e55)) | ((c <= lower) & (c < e55)))
 
     condlist = [buy, sell, hold]
     choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]

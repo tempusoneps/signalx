@@ -743,10 +743,30 @@ def test_calc_close_to_close_donchian_direct():
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
     assert sig.iloc[30] == SignalState.BUY
 
-    # Lower breakdown at bar 35
+    # Lower breakdown at bar 30
     close_down = pd.Series([100.0] * n)
     close_down.iloc[30] = 80.0
     volume_down = pd.Series([1000.0] * n)
     volume_down.iloc[30] = 5000.0
     sig_down = _calc_close_to_close_donchian(close_down, volume_down, window=20)
     assert sig_down.iloc[30] == SignalState.SELL
+
+    # Price strictly inside channel (lower < close < upper) with close != ema55 -> NONE
+    close_inside = pd.Series([100.0] * n)
+    close_inside.iloc[0:20] = 90.0  # establish lower=90
+    close_inside.iloc[10] = 110.0  # establish upper=110
+    close_inside.iloc[25] = 102.0  # strictly inside (90 < 102 < 110), ema55 != 102
+    volume_inside = pd.Series([1000.0] * n)
+    sig_inside = _calc_close_to_close_donchian(close_inside, volume_inside, window=20)
+    assert sig_inside.iloc[25] == SignalState.NONE, (
+        f"Price inside channel should be NONE, got {sig_inside.iloc[25]}"
+    )
+
+    # Holding outside upper channel (close >= upper and close > ema55, but volume <= vol_ma20) -> HOLD
+    close_hold = pd.Series([100.0] * n)
+    close_hold.iloc[30] = 110.0  # close > upper
+    volume_hold = pd.Series([1000.0] * n)  # volume <= vol_ma20
+    sig_hold = _calc_close_to_close_donchian(close_hold, volume_hold, window=20)
+    assert sig_hold.iloc[30] == SignalState.HOLD, (
+        f"Price maintaining outside upper channel without volume spike should be HOLD, got {sig_hold.iloc[30]}"
+    )
