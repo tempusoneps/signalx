@@ -1,6 +1,6 @@
-# SignalX Signals Catalog (256 Signals)
+# SignalX Signals Catalog (264 Signals)
 
-`signalx` provides 256 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 264 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
@@ -8,14 +8,14 @@
 | :--- | :--- | :--- |
 | **Candlestick** | 28 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
 | **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
-| **Mean Reversion** | 17 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
+| **Mean Reversion** | 25 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
 | **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
 | **SMC** | 11 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
 | **Trend** | 52 | Directional trend following, moving average crossovers, MACD, and regime tracking |
 | **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
 | **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **256** | **Full Quantitative Feature Suite** |
+| **Total** | **264** | **Full Quantitative Feature Suite** |
 
 ## Candlestick Signals (28 Signals)
 
@@ -128,7 +128,7 @@
 | `SMC010_signal` | `smc_inducement_sweep_signal` | Inducement (IDM) minor liquidity sweep & wick rejection | `signalx_native` | Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement) | High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement) |
 | `SMC011_signal` | `smc_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
 
-## Mean Reversion Signals (17 Signals)
+## Mean Reversion Signals (25 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -149,6 +149,14 @@
 | `MR015_signal` | `mr_ehlers_roofing_filter_reversion_signal` | Ehlers Roofing Filter Reversion (2-pole HPF + 2-pole SuperSmoother cycle hook) | `signalx_native` | Standardized Roofing Filter hooks up from < -1.8 | Standardized Roofing Filter hooks down from > +1.8 |
 | `MR016_signal` | `mr_amihud_liquidity_exhaustion_signal` | Amihud Liquidity Exhaustion Reversion (ILLIQ Z-score > 2.0 with rejection wick at extreme) | `signalx_native` | ILLIQ Z-Score > 2.0 at 15-bar Low with lower wick >= 35% and bullish close | ILLIQ Z-Score > 2.0 at 15-bar High with upper wick >= 35% and bearish close |
 | `MR017_signal` | `mr_bb_w_bottom_m_top_signal` | Bollinger Bands W-Bottom & M-Top Reversion (structural double-touch band test) | `signalx_native` | W-Bottom support test holding inside lower BB with bullish close | M-Top resistance test holding inside upper BB with bearish close |
+| `MR018_signal` | `mr_vn30_morning_gap_fade_signal` | VN30F1M Morning ATO Gap Fade (08:45-09:25 gap vs Previous Day Close reversion) | `signalx_native` | Gap down <= -3.0 pts with morning bullish bounce toward PDC | Gap up >= +3.0 pts with morning bearish rejection toward PDC |
+| `MR019_signal` | `mr_vn30_opening_drive_reversal_signal` | VN30F1M Opening Drive Reversal (08:45-09:20 15m thrust exhaustion & snapback to Open) | `signalx_native` | Opening downward drive >= 5.0 pts followed by bullish rejection wick >= 35% | Opening upward drive >= 5.0 pts followed by bearish rejection wick >= 35% |
+| `MR020_signal` | `mr_vn30_afternoon_reversal_trap_signal` | VN30F1M Afternoon Open Trap Reversal (13:00-13:25 false breakout trap of morning range) | `signalx_native` | Wicks below Morning Low by <= 0.4% but closes back inside with bullish close | Wicks above Morning High by <= 0.4% but closes back inside with bearish close |
+| `MR021_signal` | `mr_vn30_pre_atc_vwap_snapback_signal` | VN30F1M Pre-ATC Snapback to VWAP (14:00-14:25 intraday position squaring toward VWAP) | `signalx_native` | In pre-ATC window, price < VWAP - 2.0 sigma with bullish bounce close | In pre-ATC window, price > VWAP + 2.0 sigma with bearish reversal close |
+| `MR022_signal` | `mr_vn30_pdh_pdl_false_break_fade_signal` | VN30F1M PDH/PDL False Breakout Liquidity Fade (failed breakout beyond prior day high/low) | `signalx_native` | Low wicks below PDL but closes back above with lower wick >= 35% | High wicks above PDH but closes back below with upper wick >= 35% |
+| `MR023_signal` | `mr_vn30_midday_lunch_range_fade_signal` | VN30F1M Midday Lunch Range Edge Fade (11:00-11:30 volume dry-up drift reversal) | `signalx_native` | Pre-lunch volume < 0.85x SMA20, low touches morning range low with bullish rejection | Pre-lunch volume < 0.85x SMA20, high touches morning range high with bearish rejection |
+| `MR024_signal` | `mr_vn30_intraday_exhaustion_fade_signal` | VN30F1M Intraday Thrust Exhaustion Fade (>= 4 consecutive bars, >= 7 pts, RSI(5) extreme) | `signalx_native` | 4-bar drop >= 7.0 pts with RSI(5) < 15.0 and bullish reversal close | 4-bar rally >= 7.0 pts with RSI(5) > 85.0 and bearish reversal close |
+| `MR025_signal` | `mr_vn30_session_vwap_band_fade_signal` | VN30F1M Session VWAP 2.5-Sigma Band Reversal (re-entry after 2.5-sigma band breach) | `signalx_native` | Prior Low < VWAP - 2.5 sigma and current Close >= VWAP - 2.5 sigma with bullish close | Prior High > VWAP + 2.5 sigma and current Close <= VWAP + 2.5 sigma with bearish close |
 
 ## Statistical Signals (20 Signals)
 

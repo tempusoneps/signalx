@@ -14,7 +14,7 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 256 standardized signals in coded format (default)
+# 2. Extract all 264 standardized signals in coded format (default)
 signals_df = signalx.generate_signals(df, show_progress=True)
 
 # 3. View extracted signal columns (e.g. TRD001_signal, MOM001_signal, CMP003_signal)
@@ -174,7 +174,7 @@ uv run signalx generate datasets/sample_ohlcv.parquet \
   -o datasets/sample_signals.parquet \
   --stats-report
 
-# Output only the 256 signal columns (drop OHLCV price columns)
+# Output only the 264 signal columns (drop OHLCV price columns)
 uv run signalx generate datasets/sample_ohlcv.csv \
   -o datasets/signals_only.parquet \
   --drop-ohlcv
@@ -197,7 +197,7 @@ uv run signalx stats datasets/sample_signals.parquet --json
 
 ### Listing Signal Catalog
 ```bash
-# List all 256 signals with codes, names, and descriptions
+# List all 264 signals with codes, names, and descriptions
 uv run signalx list
 
 # Filter listing to a specific category
