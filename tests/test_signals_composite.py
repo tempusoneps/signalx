@@ -9,6 +9,7 @@ from signalx.signals.candlestick import generate_candlestick_signals
 from signalx.signals.composite import (
     COMPOSITE_SIGNAL_COLUMNS,
     _calc_breakout_volume_confirmed,
+    _calc_keltner_stochrsi_breakout,
     _calc_ma_consensus,
     _calc_master_ensemble,
     _calc_master_ensemble_v2,
@@ -77,22 +78,23 @@ def generate_all_intermediate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([trend, mom, vol, volume, cdl, smc, stat], axis=1)
 
 
-def test_composite_signals_all_13_columns_present():
-    """Verify generate_composite_signals produces exactly 13 expected composite signals."""
+def test_composite_signals_all_14_columns_present():
+    """Verify generate_composite_signals produces exactly 14 expected composite signals."""
     df = make_synthetic_ohlcv(250)
     intermediate = generate_all_intermediate(df)
     res = generate_composite_signals(df, intermediate)
 
-    assert len(EXPECTED_COMPOSITE_SIGNALS) == 13
+    assert len(EXPECTED_COMPOSITE_SIGNALS) == 14
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 13
+    assert len(res.columns) == 14
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns, f"Expected column {col} missing from output"
         assert col.endswith("_signal"), f"Column {col} must end with '_signal'"
     assert "comp_vn30_intraday_confluence_signal" in res.columns
+    assert "comp_keltner_stochrsi_breakout_signal" in res.columns
 
 
 def test_composite_signals_all_states_valid():
@@ -126,11 +128,11 @@ def test_composite_signals_state_occurrences():
 
 
 def test_composite_signals_without_intermediate():
-    """Verify generate_composite_signals auto-computes intermediate signals if None is passed."""
+    """Verify that generate_composite_signals works gracefully when intermediate is None."""
     df = make_synthetic_ohlcv(100)
     res = generate_composite_signals(df, None)
 
-    assert len(res.columns) == 13
+    assert len(res.columns) == 14
     assert len(res) == 100
     for col in EXPECTED_COMPOSITE_SIGNALS:
         assert col in res.columns
@@ -145,7 +147,7 @@ def test_composite_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 13
+    assert len(res.columns) == 14
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -161,7 +163,7 @@ def test_composite_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 13
+    assert len(res.columns) == 14
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -175,7 +177,16 @@ def test_composite_signals_normalization():
     res = generate_composite_signals(df_upper, None)
 
     assert len(res) == 50
-    assert len(res.columns) == 13
+    assert len(res.columns) == 14
+
+
+def test_calc_keltner_stochrsi_breakout_direct():
+    """Verify direct calculation of Keltner & StochRSI Confluence Breakout."""
+    df = make_synthetic_ohlcv(150)
+    sig = _calc_keltner_stochrsi_breakout(df["high"], df["low"], df["close"], df["volume"])
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
 
 
 def test_composite_signals_missing_columns():

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
@@ -21,6 +23,7 @@ COMPOSITE_SIGNAL_COLUMNS = [
     "comp_squeeze_momentum_volume_surge_signal",
     "comp_master_ensemble_v2_signal",
     "comp_vn30_intraday_confluence_signal",
+    "comp_keltner_stochrsi_breakout_signal",
 ]
 
 
@@ -471,7 +474,7 @@ def generate_composite_signals(
     intermediate_signals: pd.DataFrame | None = None,
     show_progress: bool = False,
 ) -> pd.DataFrame:
-    """Generate all 13 standardized composite and consensus signals.
+    """Generate all 14 standardized composite and consensus signals.
 
     Parameters
     ----------
@@ -487,7 +490,7 @@ def generate_composite_signals(
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 13 columns ending with '_signal', with values in
+        DataFrame containing 14 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -541,11 +544,11 @@ def generate_composite_signals(
         signals["comp_ma_consensus_signal"] = _calc_ma_consensus(intermediate)
         pbar.update(1)
 
-        # 5. Trend & Momentum Alignment Signal (1)
+        # 5. Trend-Momentum Alignment Signal (1)
         signals["comp_trend_momentum_align_signal"] = _calc_trend_momentum_align(trend_con, mom_con)
         pbar.update(1)
 
-        # 6. Breakout Volume Confirmed Signal (1)
+        # 6. Breakout + Volume Confirmed Signal (1)
         signals["comp_breakout_volume_confirmed_signal"] = _calc_breakout_volume_confirmed(
             intermediate
         )
@@ -557,11 +560,11 @@ def generate_composite_signals(
         )
         pbar.update(1)
 
-        # 8. MACD Histogram + Candle Reversal Signal (1)
+        # 8. MACD Hist + Candle Reversal Signal (1)
         signals["comp_macd_hist_candle_reversal_signal"] = _calc_macd_hist_candle_reversal(df_norm)
         pbar.update(1)
 
-        # 9. Smart Money Confluence Signal (1)
+        # 9. SMC Trend-Volume Confluence Signal (1)
         signals["comp_smc_trend_volume_confluence_signal"] = _calc_smc_trend_volume_confluence(
             df_norm, intermediate
         )
@@ -586,6 +589,12 @@ def generate_composite_signals(
         # 13. VN30 Intraday Master Confluence Signal (1)
         signals["comp_vn30_intraday_confluence_signal"] = _calc_vn30_intraday_confluence(
             df_norm, intermediate
+        )
+        pbar.update(1)
+
+        # 14. Keltner Channel & StochRSI Confluence Breakout Signal (1)
+        signals["comp_keltner_stochrsi_breakout_signal"] = _calc_keltner_stochrsi_breakout(
+            df_norm["high"], df_norm["low"], df_norm["close"], df_norm["volume"]
         )
         pbar.update(1)
 
@@ -713,5 +722,79 @@ def _calc_vn30_intraday_confluence(
     return pd.Series(
         np.select(conds, choices, default=SignalState.NONE),
         index=df.index,
+        dtype=str,
+    )
+
+
+def _calc_keltner_stochrsi_breakout(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+) -> pd.Series:
+    """Calculate Keltner Channel & StochRSI Confluence Breakout Signal (CMP014).
+
+    Keltner Channel (20, 2.0).
+    StochRSI (14, 14, 3, 3) %K and %D.
+    EMA(55), SMA(20, Volume).
+
+    Triggers:
+        buy: Close > KC_Upper and StochRSI_K > 65 and Close > EMA_55 and Volume > SMA_20(Volume)
+        sell: Close < KC_Lower and StochRSI_K < 35 and Close < EMA_55 and Volume > SMA_20(Volume)
+        hold: Outside channel (Close > KC_Upper or Close < KC_Lower)
+        none: Inside channel
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    kc = ta.volatility.KeltnerChannel(
+        high=high,
+        low=low,
+        close=close,
+        window=20,
+        window_atr=10,
+        multiplier=2.0,
+        original_version=False,
+        fillna=False,
+    )
+    kc_upper = kc.keltner_channel_hband()
+    kc_lower = kc.keltner_channel_lband()
+
+    stoch_rsi = ta.momentum.StochRSIIndicator(
+        close=close, window=14, smooth1=3, smooth2=3, fillna=False
+    )
+    # StochRSI K in ta library is scaled [0, 1], scale to [0, 100]
+    srsi_k = stoch_rsi.stochrsi_k() * 100.0
+
+    ema55 = close.ewm(span=55, adjust=False).mean()
+    vol_ma20 = volume.rolling(20, min_periods=1).mean()
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    u = kc_upper.to_numpy(dtype=float, na_value=np.nan)
+    l_ = kc_lower.to_numpy(dtype=float, na_value=np.nan)
+    k = srsi_k.to_numpy(dtype=float, na_value=np.nan)
+    e55 = ema55.to_numpy(dtype=float, na_value=np.nan)
+    v = volume.to_numpy(dtype=float, na_value=np.nan)
+    vma = vol_ma20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(c)
+        & ~np.isnan(u)
+        & ~np.isnan(l_)
+        & ~np.isnan(k)
+        & ~np.isnan(e55)
+        & ~np.isnan(v)
+        & ~np.isnan(vma)
+    )
+
+    buy = valid & (c > u) & (k > 65.0) & (c > e55) & (v > vma)
+    sell = valid & (c < l_) & (k < 35.0) & (c < e55) & (v > vma)
+    hold = valid & ~buy & ~sell & ((c > u) | (c < l_))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
         dtype=str,
     )
