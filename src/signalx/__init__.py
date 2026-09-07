@@ -14,7 +14,7 @@ from signalx.metadata import (
     to_semantic_names,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "ALL_SIGNAL_STATES",
     "SIGNAL_CATALOG",

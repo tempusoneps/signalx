@@ -285,7 +285,7 @@ This document establishes the Git workflow, commit message standards, branch nam
 SignalX enforces the following structured commit message format:
 
 ```
-<branch>(<next_tag|next_version>): <short summary in lowercase>
+<branch>(v<version>): <short summary in lowercase>
 
 [optional body providing detailed context, rationale, or breaking changes]
 
@@ -294,17 +294,16 @@ SignalX enforces the following structured commit message format:
 
 ### Components
 1. **`<branch>`**: The current working branch name (e.g. `develop`, `feature/signals-expansion`, `main`).
-2. **`<next_tag|next_version>`**: The upcoming target semantic release version tag, calculated as follows:
-   - **Calculation Rule**: `next_tag|next_version` = **Current Tag + `0.1.0`** (minor version bump, e.g. `v0.1.0` $\rightarrow$ `v0.2.0`, `v0.2.0` $\rightarrow$ `v0.3.0`).
-   - **Default / Initial State**: If the repository has no existing tags or versions yet, the default value is always **`v0.1.0`**.
+2. **`v<version>`**: The exact project version defined in `pyproject.toml` (under `[project].version`, prefixed with `v`, e.g. `version = "0.1.0"` $\rightarrow$ `v0.1.0`).
+   - **Source of Truth**: Always extract directly from `pyproject.toml`.
+   - **No Version Guessing**: Do not calculate or predict future release versions (no `next_tag` or `next_version`). Always use the active version currently declared in `pyproject.toml`.
 3. **`<short summary in lowercase>`**: Concise imperative description of the change starting with a lowercase letter (no trailing period).
 
 ### Examples
-- `develop(v0.1.0): initial release with core pipeline and base signals` *(when no prior tags exist)*
-- `develop(v0.2.0): add 10 smc and candlestick signals (cdl028-cdl037)` *(when current tag is v0.1.0)*
-- `develop(v0.2.0): add 12 dsp and trend signals (trd042-trd053)`
-- `feature/smc-signals(v0.3.0): implement fvg mitigation and order block retest` *(when current tag is v0.2.0)*
-- `main(v1.0.0): release signalx 230 quantitative signals suite`
+- `develop(v0.1.0): initial release with core pipeline and base signals`
+- `develop(v0.1.0): add 12 mean reversion signals (mr001-mr012)`
+- `feature/smc-signals(v0.1.0): implement fvg mitigation and order block retest`
+- `main(v0.1.0): release signalx 251 quantitative signals suite`
 
 ### Rules & Formatting
 - **Subject line length**: Maximum 72 characters.

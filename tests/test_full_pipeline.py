@@ -272,7 +272,7 @@ def test_signalx_package_exports():
     assert hasattr(signalx, "get_signal_by_code")
     assert hasattr(signalx, "get_signal_by_name")
     assert hasattr(signalx, "get_signal_metadata")
-    assert signalx.__version__ == "0.1.0"
+    assert signalx.__version__ == "0.2.0"
 
     assert callable(signalx.to_code_names)
     assert callable(signalx.to_semantic_names)
