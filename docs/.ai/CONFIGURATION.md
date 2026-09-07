@@ -36,11 +36,11 @@ This document defines the configuration options, parameters, and input/output da
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
-| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 239 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 239 signal columns. |
+| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 251 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 251 signal columns. |
 | `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
 | `naming` | `Literal["code", "semantic"]` | `"code"` | Output column naming format. `"code"` produces compact standardized identifiers (e.g. `TRD001_signal`), while `"semantic"` produces descriptive identifiers (e.g. `trend_sma_cross_5_20_signal`). |
 
-**Return Value**: `pandas.DataFrame` containing all 239 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
+**Return Value**: `pandas.DataFrame` containing all 251 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
 ---
 
@@ -49,7 +49,7 @@ This document defines the configuration options, parameters, and input/output da
 `signalx` CLI is invoked via `signalx <command> [options]`.
 
 ### Subcommand: `generate`
-Extracts all 239 trading signals from an input dataset file.
+Extracts all 251 trading signals from an input dataset file.
 ```bash
 signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress] [--naming {code,semantic}]
 ```
@@ -88,7 +88,7 @@ signalx list [--category <category>]
 ```
 | Flag | Type | Allowed Values | Description |
 | :--- | :--- | :--- | :--- |
-| `--category` | `str` | `trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `statistical`, `composite` | Filter signal listing by category. |
+| `--category` | `str` | `trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `mean_reversion`, `statistical`, `composite` | Filter signal listing by category. |
 
 ---
 

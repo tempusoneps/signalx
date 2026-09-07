@@ -1,6 +1,6 @@
-# SignalX Signals Catalog (239 Signals)
+# SignalX Signals Catalog (251 Signals)
 
-`signalx` provides 239 standardized trading signals partitioned across 8 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 251 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
@@ -8,13 +8,14 @@
 | :--- | :--- | :--- |
 | **Candlestick** | 28 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
 | **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
+| **Mean Reversion** | 12 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
 | **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
 | **SMC** | 11 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
 | **Trend** | 52 | Directional trend following, moving average crossovers, MACD, and regime tracking |
 | **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
 | **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **239** | **Full Quantitative Feature Suite** |
+| **Total** | **251** | **Full Quantitative Feature Suite** |
 
 ## Candlestick Signals (28 Signals)
 
@@ -126,6 +127,23 @@
 | `SMC009_signal` | `smc_judas_swing_signal` | ICT Judas Swing false opening breakout & reversal | `signalx_native` | Low sweeps 5-bar low then closes above midpoint and open (Bullish Judas Swing) | High sweeps 5-bar high then closes below midpoint and open (Bearish Judas Swing) |
 | `SMC010_signal` | `smc_inducement_sweep_signal` | Inducement (IDM) minor liquidity sweep & wick rejection | `signalx_native` | Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement) | High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement) |
 | `SMC011_signal` | `smc_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
+
+## Mean Reversion Signals (12 Signals)
+
+| Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `MR001_signal` | `mr_connors_rsi2_regime_signal` | Larry Connors RSI(2) Trend-Filtered Reversion (RSI(2) < 10 with Close > SMA200) | `signalx_native` | Close > SMA200 and RSI(2) < 10.0 (extreme short-term pullback in macro uptrend) | Close < SMA200 and RSI(2) > 90.0 (extreme short-term bounce in macro downtrend) |
+| `MR002_signal` | `mr_ou_process_spread_reversion_signal` | Ornstein-Uhlenbeck (OU) Equilibrium Spread Reversion (30-bar rolling OU fit) | `signalx_native` | Spread deviation < -2.0 sigma with positive reversion rate (theta > 0) | Spread deviation > +2.0 sigma with positive reversion rate (theta > 0) |
+| `MR003_signal` | `mr_vwap_distance_zscore_signal` | Rolling VWAP Distance Z-Score Stretch (20-bar rolling VWAP stretch) | `signalx_native` | Distance Z-Score < -2.0 (severely stretched below VWAP) | Distance Z-Score > +2.0 (severely stretched above VWAP) |
+| `MR004_signal` | `mr_bb_pct_b_hook_reversion_signal` | Bollinger Bands %B Extreme Hook Re-entry (%B hooks back inside [0, 1]) | `signalx_native` | Previous %B < 0.0 and current %B >= 0.0 with bullish close | Previous %B > 1.0 and current %B <= 1.0 with bearish close |
+| `MR005_signal` | `mr_keltner_atr_stretch_reentry_signal` | Keltner Channel 3-ATR Re-entry Reversal (re-entry after 3-ATR channel breach) | `signalx_native` | Previous Low < EMA20 - 3*ATR and current Close >= EMA20 - 3*ATR | Previous High > EMA20 + 3*ATR and current Close <= EMA20 + 3*ATR |
+| `MR006_signal` | `mr_kurtosis_fat_tail_exhaustion_signal` | Rolling Kurtosis Fat-Tail Shock Reversal (excess kurtosis > 3 with return Z-score > 2.5) | `signalx_native` | Excess kurtosis > 3.0 and return Z-Score < -2.5 with upward return hook | Excess kurtosis > 3.0 and return Z-Score > +2.5 with downward return hook |
+| `MR007_signal` | `mr_dual_ma_disparity_index_signal` | Disparity Index Stretch (percentage disparity from SMA20 > 3.5%) | `signalx_native` | Disparity Index < -3.5% with bullish close | Disparity Index > +3.5% with bearish close |
+| `MR008_signal` | `mr_linreg_residual_zscore_signal` | Linear Regression Residuals Z-Score Stretch (20-bar rolling regression residual) | `signalx_native` | Residual Z-Score < -2.0 (price deeply below regression line) | Residual Z-Score > +2.0 (price deeply above regression line) |
+| `MR009_signal` | `mr_wr_cci_double_oversold_signal` | Williams %R & CCI Confluence Mean Reversion (dual extreme hook) | `signalx_native` | Williams %R < -85 and CCI < -150 with both hooking upward | Williams %R > -15 and CCI > +150 with both hooking downward |
+| `MR010_signal` | `mr_session_range_fade_signal` | Intraday Session Initial Balance Fade (false extension beyond 30m IB range) | `signalx_native` | Price wicks above IB High by >0.2% but closes back inside IB | Price wicks below IB Low by >0.2% but closes back inside IB |
+| `MR011_signal` | `mr_volume_climax_absorption_reversion_signal` | Volume Climax Absorption at Extremes (3x volume spike with rejection wick at 20-bar extreme) | `signalx_native` | Volume spike at 20-bar Low with lower rejection wick >= 40% and bullish close | Volume spike at 20-bar High with upper rejection wick >= 40% and bearish close |
+| `MR012_signal` | `mr_multi_period_stretch_consensus_signal` | Multi-Period Deviation Consensus (simultaneous 10, 20, 50-bar stretch > 1.8 sigma) | `signalx_native` | Price simultaneously < mean - 1.8 sigma for 10, 20, and 50-bar windows | Price simultaneously > mean + 1.8 sigma for 10, 20, and 50-bar windows |
 
 ## Statistical Signals (20 Signals)
 

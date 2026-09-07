@@ -7,9 +7,9 @@ This document establishes the mandatory architectural rules and invariant constr
 ## Rule 1: Suffix & Naming Rule (`_signal`)
 - **Requirement**: 100% of generated signal column names must end with the postfix `_signal`.
 - **Formats**:
-  - **Coded Format (Default)**: `<CODE>_signal` where `<CODE>` is a 3-letter uppercase category code followed by a 3-digit zero-padded index (e.g., `TRD001_signal`, `MOM001_signal`, `CMP008_signal`).
+  - **Coded Format (Default)**: `<CODE>_signal` where `<CODE>` is a 2 to 3-letter uppercase category code followed by a 3-digit zero-padded index (e.g., `TRD001_signal`, `MR001_signal`, `CMP008_signal`).
   - **Semantic Format**: `<category>_<indicator_name>_<params>_signal` (e.g., `trend_sma_cross_5_20_signal`, `comp_master_ensemble_signal`).
-- **Rationale**: Enables seamless regular expression matching (e.g., `df.filter(regex=r"_signal$")` or `df.filter(regex=r"^TRD\d{3}_signal$")`), prevents name collisions with raw price/indicator columns, and allows deterministic pipeline operations.
+- **Rationale**: Enables seamless regular expression matching (e.g., `df.filter(regex=r"_signal$")` or `df.filter(regex=r"^[A-Z]{2,3}\d{3}_signal$")`), prevents name collisions with raw price/indicator columns, and allows deterministic pipeline operations.
 
 ---
 
@@ -33,7 +33,7 @@ This document establishes the mandatory architectural rules and invariant constr
 ---
 
 ## Rule 4: Unified Single-Pipeline Execution
-- **Requirement**: Calling `signalx.generate_signals(df)` must run all 8 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `statistical`, `composite`) without requiring manual multi-stage wiring.
+- **Requirement**: Calling `signalx.generate_signals(df)` must run all 9 signal categories (`trend`, `momentum`, `volatility`, `volume`, `candlestick`, `smc`, `mean_reversion`, `statistical`, `composite`) without requiring manual multi-stage wiring.
 - **Behavior**:
   - `naming="code"` (default): Returns compact coded column names (`TRD001_signal` ... `CMP008_signal`).
   - `naming="semantic"`: Returns verbose descriptive column names (`trend_sma_cross_5_20_signal` ...).
@@ -59,15 +59,16 @@ This document establishes the mandatory architectural rules and invariant constr
 ---
 
 ## Rule 7: Strict Category Partitioning
-- **Requirement**: Every signal must belong to exactly one of the 8 valid categories:
+- **Requirement**: Every signal must belong to exactly one of the 9 valid categories:
   1. `trend` (Trend-following & Moving Averages) (52 signals)
   2. `momentum` (Oscillators & Speed of Price Change) (39 signals)
   3. `volatility` (Bands, Envelopes & Breakouts) (44 signals)
   4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
   5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
   6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
-  7. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
-  8. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
+  7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (12 signals)
+  8. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
+  9. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
 
 ---
 
