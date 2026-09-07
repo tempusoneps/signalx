@@ -27,6 +27,14 @@ MEAN_REVERSION_SIGNAL_COLUMNS = [
     "mr_ehlers_roofing_filter_reversion_signal",
     "mr_amihud_liquidity_exhaustion_signal",
     "mr_bb_w_bottom_m_top_signal",
+    "mr_vn30_morning_gap_fade_signal",
+    "mr_vn30_opening_drive_reversal_signal",
+    "mr_vn30_afternoon_reversal_trap_signal",
+    "mr_vn30_pre_atc_vwap_snapback_signal",
+    "mr_vn30_pdh_pdl_false_break_fade_signal",
+    "mr_vn30_midday_lunch_range_fade_signal",
+    "mr_vn30_intraday_exhaustion_fade_signal",
+    "mr_vn30_session_vwap_band_fade_signal",
 ]
 
 
@@ -1613,7 +1621,7 @@ def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
 ) -> pd.DataFrame:
-    """Generate all 12 Mean Reversion trading signals from an OHLCV DataFrame.
+    """Generate all 25 Mean Reversion trading signals from an OHLCV DataFrame.
 
     Parameters
     ----------
@@ -1625,7 +1633,7 @@ def generate_mean_reversion_signals(
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 17 columns ending with '_signal', with values in
+        DataFrame containing 25 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -1647,6 +1655,7 @@ def generate_mean_reversion_signals(
         low = df_norm["low"]
         close = df_norm["close"]
         volume = df_norm["volume"]
+        session_ctx = extract_session_context(df_norm)
 
         # 1. Connors RSI(2) Trend-Filtered Reversion (MR001)
         signals["mr_connors_rsi2_regime_signal"] = _calc_connors_rsi2_regime(close)
@@ -1747,6 +1756,69 @@ def generate_mean_reversion_signals(
         # 17. Bollinger Bands W-Bottom / M-Top (MR017)
         signals["mr_bb_w_bottom_m_top_signal"] = _calc_bb_w_bottom_m_top(
             open_p=open_p, high=high, low=low, close=close
+        )
+        pbar.update(1)
+
+        # 18. VN30F1M Morning ATO Gap Fade (MR018)
+        signals["mr_vn30_morning_gap_fade_signal"] = _calc_vn30_morning_gap_fade(
+            open_p=open_p, high=high, low=low, close=close, session_ctx=session_ctx
+        )
+        pbar.update(1)
+
+        # 19. VN30F1M Opening Drive Reversal (MR019)
+        signals["mr_vn30_opening_drive_reversal_signal"] = _calc_vn30_opening_drive_reversal(
+            open_p=open_p, high=high, low=low, close=close, session_ctx=session_ctx
+        )
+        pbar.update(1)
+
+        # 20. VN30F1M Afternoon Open Trap Reversal (MR020)
+        signals["mr_vn30_afternoon_reversal_trap_signal"] = _calc_vn30_afternoon_reversal_trap(
+            open_p=open_p, high=high, low=low, close=close, session_ctx=session_ctx
+        )
+        pbar.update(1)
+
+        # 21. VN30F1M Pre-ATC Snapback to VWAP (MR021)
+        signals["mr_vn30_pre_atc_vwap_snapback_signal"] = _calc_vn30_pre_atc_vwap_snapback(
+            open_p=open_p,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            session_ctx=session_ctx,
+        )
+        pbar.update(1)
+
+        # 22. VN30F1M PDH/PDL False Breakout Liquidity Fade (MR022)
+        signals["mr_vn30_pdh_pdl_false_break_fade_signal"] = _calc_vn30_pdh_pdl_false_break_fade(
+            open_p=open_p, high=high, low=low, close=close, session_ctx=session_ctx
+        )
+        pbar.update(1)
+
+        # 23. VN30F1M Midday Lunch Range Edge Fade (MR023)
+        signals["mr_vn30_midday_lunch_range_fade_signal"] = _calc_vn30_midday_lunch_range_fade(
+            open_p=open_p,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            session_ctx=session_ctx,
+        )
+        pbar.update(1)
+
+        # 24. VN30F1M Intraday Consecutive Thrust Exhaustion Fade (MR024)
+        signals["mr_vn30_intraday_exhaustion_fade_signal"] = _calc_vn30_intraday_exhaustion_fade(
+            open_p=open_p, high=high, low=low, close=close
+        )
+        pbar.update(1)
+
+        # 25. VN30F1M Session VWAP 2.5-Sigma Band Reversal (MR025)
+        signals["mr_vn30_session_vwap_band_fade_signal"] = _calc_vn30_session_vwap_band_fade(
+            open_p=open_p,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            session_ctx=session_ctx,
         )
         pbar.update(1)
 
