@@ -42,8 +42,8 @@ VOLUME_SIGNAL_COLUMNS = [
     "volume_rvol_time_bucket_signal",
     "volume_cvd_divergence_signal",
     "volume_stopping_climax_signal",
-    "vol_rolling_volume_shelf_zscore_signal",
-    "vlm_vn30_late_session_vwap_momentum_signal",
+    "volume_rolling_shelf_zscore_signal",
+    "volume_vn30_late_session_vwap_momentum_signal",
 ]
 
 
@@ -1183,13 +1183,13 @@ def generate_volume_signals(df: pd.DataFrame, show_progress: bool = False) -> pd
         pbar.update(1)
 
         # 30. Rolling 12-Bar Volume Shelf & Variance Z-Score (1)
-        signals["vol_rolling_volume_shelf_zscore_signal"] = _calc_rolling_volume_shelf_zscore(
+        signals["volume_rolling_shelf_zscore_signal"] = _calc_rolling_volume_shelf_zscore(
             close, volume, shelf_len=12
         )
         pbar.update(1)
 
         # 31. Late-Session VWAP Momentum Stretch (1)
-        signals["vlm_vn30_late_session_vwap_momentum_signal"] = (
+        signals["volume_vn30_late_session_vwap_momentum_signal"] = (
             _calc_vn30_late_session_vwap_momentum(
                 open_p, high, low, close, volume, session_ctx=session_ctx
             )

@@ -68,8 +68,8 @@ def test_volume_signals_all_34_columns_present():
     assert "volume_rvol_time_bucket_signal" in res.columns
     assert "volume_cvd_divergence_signal" in res.columns
     assert "volume_stopping_climax_signal" in res.columns
-    assert "vol_rolling_volume_shelf_zscore_signal" in res.columns
-    assert "vlm_vn30_late_session_vwap_momentum_signal" in res.columns
+    assert "volume_rolling_shelf_zscore_signal" in res.columns
+    assert "volume_vn30_late_session_vwap_momentum_signal" in res.columns
 
 
 def test_volume_signals_all_states_valid():
