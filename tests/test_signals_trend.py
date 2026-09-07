@@ -5,7 +5,13 @@ import pandas as pd
 import pytest
 
 from signalx.constants import ALL_SIGNAL_STATES, SignalState
-from signalx.signals.trend import TREND_SIGNAL_COLUMNS, generate_trend_signals
+from signalx.signals.session_helper import extract_session_context
+from signalx.signals.trend import (
+    TREND_SIGNAL_COLUMNS,
+    _calc_vn30_asymmetric_persistence,
+    _calc_vn30_prior_auction_bias,
+    generate_trend_signals,
+)
 
 
 def make_synthetic_ohlcv(n: int = 250, seed: int = 42) -> pd.DataFrame:
@@ -33,14 +39,14 @@ EXPECTED_TREND_SIGNALS = TREND_SIGNAL_COLUMNS
 
 
 def test_trend_signals_all_columns_present():
-    """Verify generate_trend_signals produces exactly the expected 52 trend signals."""
+    """Verify generate_trend_signals produces exactly the expected 54 trend signals."""
     df = make_synthetic_ohlcv(250)
     res = generate_trend_signals(df)
 
-    assert len(EXPECTED_TREND_SIGNALS) == 52
+    assert len(EXPECTED_TREND_SIGNALS) == 54
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 250
-    assert len(res.columns) == 52
+    assert len(res.columns) == 54
     assert list(res.index) == list(df.index)
 
     for col in EXPECTED_TREND_SIGNALS:
@@ -83,7 +89,7 @@ def test_trend_signals_short_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 10
-    assert len(res.columns) == 52
+    assert len(res.columns) == 54
 
     for col in res.columns:
         assert not res[col].isna().any()
@@ -98,7 +104,7 @@ def test_trend_signals_empty_dataframe():
 
     assert isinstance(res, pd.DataFrame)
     assert len(res) == 0
-    assert len(res.columns) == 52
+    assert len(res.columns) == 54
     for col in res.columns:
         assert col.endswith("_signal")
 
@@ -112,7 +118,7 @@ def test_trend_signals_normalization():
     res = generate_trend_signals(df_upper)
 
     assert len(res) == 50
-    assert len(res.columns) == 52
+    assert len(res.columns) == 54
 
 
 def test_trend_signals_missing_columns():
@@ -186,6 +192,8 @@ def test_new_dsp_and_trend_signals_present():
         "trend_alligator_lips_jaw_cross_signal",
         "trend_alma_cross_9_signal",
         "trend_zero_lag_ema_cross_21_signal",
+        "trend_vn30_prior_auction_bias_signal",
+        "trend_vn30_asymmetric_persistence_signal",
     ]
     df = make_synthetic_ohlcv(200)
     res = generate_trend_signals(df)
@@ -194,3 +202,64 @@ def test_new_dsp_and_trend_signals_present():
         assert sig in res.columns, f"New trend signal {sig} not found in output"
         assert not res[sig].isna().any(), f"{sig} contains NaN values"
         assert set(res[sig].unique()).issubset(ALL_SIGNAL_STATES), f"{sig} has invalid states"
+
+
+def test_calc_vn30_prior_auction_bias():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_prior_auction_bias(df["open"], df["high"], df["low"], df["close"], ctx)
+    assert len(sig) == len(df)
+    assert not sig.isna().any()
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_prior_auction_bias_logic():
+    dates = (
+        pd.date_range("2026-01-01 09:00", periods=50, freq="5min").tolist()
+        + pd.date_range("2026-01-02 09:00", periods=50, freq="5min").tolist()
+    )
+    close_day1 = np.linspace(100.0, 110.0, 50)
+    close_day2 = np.linspace(110.0, 120.0, 50)
+    close = pd.Series(np.concatenate([close_day1, close_day2]))
+    high = close + 1.0
+    low = close - 1.0
+    open_p = close - 0.5
+    df = pd.DataFrame(
+        {
+            "open": open_p,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": 1000.0,
+            "datetime": dates,
+        }
+    )
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_prior_auction_bias(df["open"], df["high"], df["low"], df["close"], ctx)
+    assert len(sig) == 100
+    # Day 1 has no prior session bias, so it must be all NONE
+    assert (sig.iloc[:50] == SignalState.NONE).all()
+    # Day 2 should reflect Day 1's bias
+    assert set(sig.iloc[50:].unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_asymmetric_persistence():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_asymmetric_persistence(df["open"], df["high"], df["low"], df["close"], ctx)
+    assert len(sig) == len(df)
+    assert not sig.isna().any()
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_asymmetric_persistence_logic():
+    n = 60
+    close = pd.Series(np.linspace(100.0, 200.0, n))
+    high = close + 0.5
+    low = close - 0.5
+    open_p = close - 0.2
+    df = pd.DataFrame({"open": open_p, "high": high, "low": low, "close": close, "volume": 1000.0})
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_asymmetric_persistence(df["open"], df["high"], df["low"], df["close"], ctx)
+    assert len(sig) == n
+    assert SignalState.BUY in sig.values

@@ -7,6 +7,7 @@ import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
+from signalx.signals.session_helper import SessionContext, extract_session_context
 from signalx.utils import normalize_ohlcv
 
 TREND_SIGNAL_COLUMNS = [
@@ -62,6 +63,8 @@ TREND_SIGNAL_COLUMNS = [
     "trend_alligator_lips_jaw_cross_signal",
     "trend_alma_cross_9_signal",
     "trend_zero_lag_ema_cross_21_signal",
+    "trend_vn30_prior_auction_bias_signal",
+    "trend_vn30_asymmetric_persistence_signal",
 ]
 
 
@@ -720,8 +723,203 @@ def _calc_zero_lag_ema(close: pd.Series, length: int = 21) -> pd.Series:
     return 2.0 * ema1 - ema2
 
 
+def _calc_vn30_prior_auction_bias(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+    adx_window: int = 14,
+) -> pd.Series:
+    """Prior-Session 13:55 Afternoon Auction Bias (TRD053 / trend_vn30_prior_auction_bias_signal).
+
+    Evaluates late-session momentum (13:55), body rate, and ADX at the prior session's
+    afternoon auction setup, shifting the directional bias by 1 session to prevent lookahead.
+
+    Triggers:
+    - buy: prev_day_bias == 'long' and close > ema_55 and rsi_21 > 50
+    - sell: prev_day_bias == 'short' and close < ema_55 and rsi_21 < 50
+    - hold: (bias == 'long' and close >= ema_55) | (bias == 'short' and close <= ema_55)
+    - none: default
+    """
+    n = len(close)
+    if n == 0:
+        return pd.Series(dtype=str, index=close.index)
+    if n < 14:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    time_minutes = session_ctx.time_minutes
+
+    ema_55 = close.ewm(span=55, adjust=False).mean()
+    try:
+        rsi_21 = ta.momentum.RSIIndicator(close=close, window=21, fillna=False).rsi()
+    except Exception:
+        rsi_21 = pd.Series(50.0, index=close.index)
+
+    try:
+        adx_ind = ta.trend.ADXIndicator(high=high, low=low, close=close, window=adx_window)
+        adx = adx_ind.adx()
+    except Exception:
+        adx = pd.Series(np.nan, index=close.index)
+
+    last_close_per_sess = close.groupby(sess_id).last()
+    pdc_per_sess = last_close_per_sess.shift(1)
+
+    unique_sessions = sess_id.unique()
+    session_bias = pd.Series("", index=unique_sessions, dtype=str)
+
+    for sid in unique_sessions:
+        pdc_val = pdc_per_sess.get(sid, np.nan)
+        if pdc_val is None or np.isnan(pdc_val) or pdc_val <= 0:
+            continue
+
+        mask = sess_id == sid
+        s_times = time_minutes[mask]
+        s_high = high[mask]
+        s_low = low[mask]
+        s_close = close[mask]
+        s_adx = adx[mask]
+
+        if len(s_close) == 0:
+            continue
+
+        # 13:55 is 835 minutes. Pick last bar <= 835, fallback to last bar of session
+        cand = s_times[s_times <= 835]
+        eval_idx = cand.index[-1] if len(cand) > 0 else s_close.index[-1]
+
+        close_1355 = s_close.loc[eval_idx]
+        if isinstance(close_1355, pd.Series):
+            close_1355 = close_1355.iloc[-1]
+        mom_y = 100.0 * (float(close_1355) - float(pdc_val)) / (float(pdc_val) + 1e-8)
+
+        # 09:15 is 555 minutes. Pick first bar == 555, fallback to first bar of session
+        at_0915 = s_times[s_times == 555]
+        if len(at_0915) > 0:
+            fc = s_close.loc[at_0915.index[0]]
+            first_close = float(fc.iloc[0]) if isinstance(fc, pd.Series) else float(fc)
+        else:
+            first_close = float(s_close.iloc[0])
+
+        pre_1345 = s_times < 825
+        if pre_1345.any():
+            high_pre_1345 = float(s_high[pre_1345].max())
+        else:
+            eval_pos = s_close.index.get_loc(eval_idx)
+            if isinstance(eval_pos, (slice, np.ndarray)):
+                bars_pre = s_high.iloc[: len(s_high)]
+            else:
+                bars_pre = s_high.iloc[: eval_pos + 1]
+            high_pre_1345 = float(bars_pre.max()) if len(bars_pre) > 0 else float(s_high.iloc[0])
+
+        pre_1355 = s_times < 835
+        if pre_1355.any():
+            low_pre_1355 = float(s_low[pre_1355].min())
+        else:
+            eval_pos = s_close.index.get_loc(eval_idx)
+            if isinstance(eval_pos, (slice, np.ndarray)):
+                bars_pre = s_low.iloc[: len(s_low)]
+            else:
+                bars_pre = s_low.iloc[: eval_pos + 1]
+            low_pre_1355 = float(bars_pre.min()) if len(bars_pre) > 0 else float(s_low.iloc[0])
+
+        body_rate = (float(close_1355) - first_close) / (high_pre_1345 - low_pre_1355 + 1e-8)
+
+        adx_val_item = s_adx.loc[eval_idx]
+        adx_val = (
+            float(adx_val_item.iloc[-1])
+            if isinstance(adx_val_item, pd.Series)
+            else float(adx_val_item)
+        )
+
+        if not np.isnan(adx_val):
+            if mom_y > 0.26 and body_rate > 0.65 and adx_val < 26.5:
+                session_bias[sid] = "long"
+            elif mom_y < -0.18 and body_rate < -0.39 and adx_val < 26.5:
+                session_bias[sid] = "short"
+
+    session_bias_shifted = session_bias.shift(1).fillna("")
+    bar_bias = sess_id.map(session_bias_shifted).fillna("")
+
+    bias_long = bar_bias == "long"
+    bias_short = bar_bias == "short"
+
+    c_above_ema = close > ema_55
+    c_below_ema = close < ema_55
+    c_ge_ema = close >= ema_55
+    c_le_ema = close <= ema_55
+
+    rsi_bull = rsi_21 > 50.0
+    rsi_bear = rsi_21 < 50.0
+
+    buy = bias_long & c_above_ema & rsi_bull
+    sell = bias_short & c_below_ema & rsi_bear
+    hold = (bias_long & c_ge_ema) | (bias_short & c_le_ema)
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    res = np.select(condlist, choicelist, default=SignalState.NONE)
+
+    return pd.Series(res, index=close.index, dtype=str).fillna(SignalState.NONE)
+
+
+def _calc_vn30_asymmetric_persistence(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """VN30 Asymmetric Range Position & Selling Persistence (TRD054 / trend_vn30_asymmetric_persistence_signal).
+
+    Leverages structural market asymmetry:
+    - Longs: Session high range position continuation (pos_range > 0.79, DI+ > DI-, slope_8 > 0, RSI_5 > 60).
+    - Shorts: Sustained selling persistence (persist_short >= 0.42, DI- > DI+, slope_8 < 0, RSI_5 < 40).
+    - Hold: Directional trend alignment.
+    - None: Default.
+    """
+    n = len(close)
+    if n == 0:
+        return pd.Series(dtype=str, index=close.index)
+    if n < 14:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    running_high = high.groupby(sess_id).cummax()
+    running_low = low.groupby(sess_id).cummin()
+    session_open = open_p.groupby(sess_id).transform("first")
+
+    pos_range = (close - running_low) / (running_high - running_low + 1e-8)
+    persist_short = (close < session_open).astype(float).rolling(12, min_periods=1).mean()
+
+    try:
+        adx_ind = ta.trend.ADXIndicator(high=high, low=low, close=close, window=14)
+        di_plus = adx_ind.adx_pos()
+        di_minus = adx_ind.adx_neg()
+    except Exception:
+        di_plus = pd.Series(np.nan, index=close.index)
+        di_minus = pd.Series(np.nan, index=close.index)
+
+    slope_8 = close.diff(8) / 8.0
+
+    try:
+        rsi_5 = ta.momentum.RSIIndicator(close=close, window=5, fillna=False).rsi()
+    except Exception:
+        rsi_5 = pd.Series(50.0, index=close.index)
+
+    buy = (pos_range > 0.79) & (di_plus > di_minus) & (slope_8 > 0.0) & (rsi_5 > 60.0)
+    sell = (persist_short >= 0.42) & (di_minus > di_plus) & (slope_8 < 0.0) & (rsi_5 < 40.0)
+    hold = ((di_plus > di_minus) & (slope_8 > 0.0)) | ((di_minus > di_plus) & (slope_8 < 0.0))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    res = np.select(condlist, choicelist, default=SignalState.NONE)
+
+    return pd.Series(res, index=close.index, dtype=str).fillna(SignalState.NONE)
+
+
 def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 53 trend and moving average signals from OHLCV dataframe.
+    """Generate all 54 trend and moving average signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -733,7 +931,7 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 52 columns ending with '_signal', with values in
+        DataFrame containing 54 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -749,9 +947,11 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
             )
 
         close = df_norm["close"]
+        open_p = df_norm["open"]
         high = df_norm["high"]
         low = df_norm["low"]
         volume = df_norm["volume"]
+        session_ctx = extract_session_context(df_norm)
 
         signals = pd.DataFrame(index=df_norm.index)
 
@@ -955,6 +1155,18 @@ def generate_trend_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.
         # 32. Zero-Lag EMA (21) (1)
         zlema21 = _calc_zero_lag_ema(close, length=21)
         signals["trend_zero_lag_ema_cross_21_signal"] = _crossover_signal(close, zlema21)
+        pbar.update(1)
+
+        # 33. VN30 Prior Auction Bias (1)
+        signals["trend_vn30_prior_auction_bias_signal"] = _calc_vn30_prior_auction_bias(
+            open_p, high, low, close, session_ctx
+        )
+        pbar.update(1)
+
+        # 34. VN30 Asymmetric Range Position & Selling Persistence (1)
+        signals["trend_vn30_asymmetric_persistence_signal"] = _calc_vn30_asymmetric_persistence(
+            open_p, high, low, close, session_ctx
+        )
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and matching index
