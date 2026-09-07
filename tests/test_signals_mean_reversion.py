@@ -15,6 +15,7 @@ from signalx.signals.mean_reversion import (
     _calc_kurtosis_fat_tail_exhaustion,
     _calc_lehmann_short_term_reversal,
     _calc_linreg_residual_zscore,
+    _calc_lo_mackinlay_variance_ratio,
     _calc_multi_period_stretch_consensus,
     _calc_ou_process_spread_reversion,
     _calc_session_range_fade,
@@ -186,5 +187,12 @@ def test_show_progress_flag():
 def test_calc_lehmann_short_term_reversal():
     df = make_synthetic_ohlcv(120)
     sig = _calc_lehmann_short_term_reversal(df["open"], df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_lo_mackinlay_variance_ratio():
+    df = make_synthetic_ohlcv(120)
+    sig = _calc_lo_mackinlay_variance_ratio(df["close"])
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)

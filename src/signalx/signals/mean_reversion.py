@@ -759,6 +759,69 @@ def _calc_lehmann_short_term_reversal(
     )
 
 
+def _calc_lo_mackinlay_variance_ratio(
+    close: pd.Series,
+    q: int = 4,
+    window: int = 30,
+    vr_thresh: float = 0.75,
+    z_thresh: float = 1.8,
+) -> pd.Series:
+    """Lo & MacKinlay (1988) Variance Ratio Mean Reversion (MR014).
+
+    VR(q) = Var(r_q) / (q * Var(r_1)).
+    When VR < vr_thresh, price is statistically anti-persistent (mean-reverting).
+    Buy: VR < vr_thresh and Price Z-Score < -z_thresh and Close > Close.shift(1)
+    Sell: VR < vr_thresh and Price Z-Score > +z_thresh and Close < Close.shift(1)
+    Hold: VR < vr_thresh while |Price Z-Score| > 0.5
+    """
+    n = len(close)
+    if n < window + q:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    log_c = np.log(close.to_numpy(dtype=float, na_value=np.nan))
+    r1 = pd.Series(np.diff(log_c, prepend=np.nan), index=close.index)
+    rq = pd.Series(log_c - np.roll(log_c, q), index=close.index)
+    rq.iloc[:q] = np.nan
+
+    var1 = r1.rolling(window).var()
+    varq = rq.rolling(window).var()
+
+    var1_arr = var1.to_numpy(dtype=float, na_value=np.nan)
+    varq_arr = varq.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_vr = ~np.isnan(var1_arr) & ~np.isnan(varq_arr) & (var1_arr > 1e-14)
+    vr = np.full(n, np.nan, dtype=float)
+    np.divide(varq_arr, q * var1_arr, out=vr, where=valid_vr)
+
+    sma20 = close.rolling(20).mean()
+    std20 = close.rolling(20).std()
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    sma_arr = sma20.to_numpy(dtype=float, na_value=np.nan)
+    std_arr = std20.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_z = ~np.isnan(c_arr) & ~np.isnan(sma_arr) & ~np.isnan(std_arr) & (std_arr > 1e-12)
+    z_price = np.zeros(n, dtype=float)
+    np.divide(c_arr - sma_arr, std_arr, out=z_price, where=valid_z)
+
+    c_prev = close.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    valid = valid_vr & valid_z & ~np.isnan(c_prev)
+    mr_regime = valid & (vr < vr_thresh)
+
+    buy = mr_regime & (z_price < -z_thresh) & (c_arr > c_prev)
+    sell = mr_regime & (z_price > z_thresh) & (c_arr < c_prev)
+    hold = mr_regime & ~buy & ~sell & (np.abs(z_price) > 0.5)
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
