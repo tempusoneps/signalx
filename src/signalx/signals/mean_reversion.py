@@ -1190,6 +1190,66 @@ def _calc_vn30_opening_drive_reversal(
     )
 
 
+def _calc_vn30_afternoon_reversal_trap(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """VN30F1M Afternoon Open Trap Reversal (MR020).
+
+    Detects false breakouts beyond Morning Session Range (bars < 13:00) during 13:00-13:30.
+    Buy: Wicks below Morning Low by <= 0.4% but closes back inside with bullish close.
+    Sell: Wicks above Morning High by <= 0.4% but closes back inside with bearish close.
+    """
+    n = len(close)
+    if n < 10:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    t_min = session_ctx.time_minutes
+    is_morning = t_min < 11 * 60 + 30
+
+    m_high = high.where(is_morning).groupby(sess_id).transform("max")
+    m_low = low.where(is_morning).groupby(sess_id).transform("min")
+
+    mh_arr = m_high.to_numpy(dtype=float, na_value=np.nan)
+    ml_arr = m_low.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+
+    is_pm_open = session_ctx.is_afternoon_open.to_numpy(dtype=bool)
+    valid = is_pm_open & ~np.isnan(mh_arr) & ~np.isnan(ml_arr) & (mh_arr > ml_arr)
+
+    bear_trap = (
+        valid & (l_arr < ml_arr) & (l_arr >= ml_arr * 0.996) & (c_arr >= ml_arr) & (c_arr > o_arr)
+    )
+    bull_trap = (
+        valid & (h_arr > mh_arr) & (h_arr <= mh_arr * 1.004) & (c_arr <= mh_arr) & (c_arr < o_arr)
+    )
+
+    mid_arr = (mh_arr + ml_arr) / 2.0
+    hold = (
+        valid
+        & ~bear_trap
+        & ~bull_trap
+        & (((c_arr > ml_arr) & (c_arr < mid_arr)) | ((c_arr < mh_arr) & (c_arr > mid_arr)))
+    )
+
+    return pd.Series(
+        np.select(
+            [bear_trap, bull_trap, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

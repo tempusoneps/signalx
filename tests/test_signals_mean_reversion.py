@@ -22,6 +22,7 @@ from signalx.signals.mean_reversion import (
     _calc_multi_period_stretch_consensus,
     _calc_ou_process_spread_reversion,
     _calc_session_range_fade,
+    _calc_vn30_afternoon_reversal_trap,
     _calc_vn30_morning_gap_fade,
     _calc_vn30_opening_drive_reversal,
     _calc_volume_climax_absorption_reversion,
@@ -239,5 +240,13 @@ def test_calc_vn30_opening_drive_reversal():
     df = make_synthetic_ohlcv(150)
     ctx = extract_session_context(df)
     sig = _calc_vn30_opening_drive_reversal(df["open"], df["high"], df["low"], df["close"], ctx)
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_afternoon_reversal_trap():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_afternoon_reversal_trap(df["open"], df["high"], df["low"], df["close"], ctx)
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
