@@ -1123,6 +1123,73 @@ def _calc_vn30_morning_gap_fade(
     )
 
 
+def _calc_vn30_opening_drive_reversal(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+    drive_pts: float = 5.0,
+) -> pd.Series:
+    """VN30F1M Opening Drive Reversal (MR019).
+
+    Measures initial 15-minute directional thrust (bars 0-2 of session).
+    When bars 3-6 (09:00-09:20) exhibit rejection wick >= 35% with opposite close:
+    Buy: 3-bar opening drop >= drive_pts followed by bullish reversal bar.
+    Sell: 3-bar opening rally >= drive_pts followed by bearish reversal bar.
+    """
+    n = len(close)
+    if n < 6:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    bar_in_sess = session_ctx.bar_in_session.to_numpy(dtype=int)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+
+    rng = np.maximum(h_arr - l_arr, 1e-12)
+    body_low = np.minimum(o_arr, c_arr)
+    body_high = np.maximum(o_arr, c_arr)
+    lower_wick_pct = (body_low - l_arr) / rng
+    upper_wick_pct = (h_arr - body_high) / rng
+
+    # Find open of bar 0 for each session
+    sess_id = session_ctx.session_id
+    first_open = sess_id.map(open_p.groupby(sess_id).first()).to_numpy(dtype=float, na_value=np.nan)
+    # Find close of bar 2 for each session
+    # Create mask for bar 2
+    is_bar2 = bar_in_sess == 2
+    bar2_close_arr = sess_id.map(close.where(is_bar2).groupby(sess_id).first()).to_numpy(
+        dtype=float, na_value=np.nan
+    )
+
+    drive = bar2_close_arr - first_open
+    in_reversal_window = (bar_in_sess >= 3) & (bar_in_sess <= 6)
+
+    buy = in_reversal_window & (drive <= -drive_pts) & (c_arr > o_arr) & (lower_wick_pct >= 0.35)
+    sell = in_reversal_window & (drive >= drive_pts) & (c_arr < o_arr) & (upper_wick_pct >= 0.35)
+    hold = (
+        in_reversal_window
+        & ~buy
+        & ~sell
+        & (
+            ((drive <= -drive_pts) & (c_arr < first_open))
+            | ((drive >= drive_pts) & (c_arr > first_open))
+        )
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
