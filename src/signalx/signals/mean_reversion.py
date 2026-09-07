@@ -975,6 +975,92 @@ def _calc_amihud_liquidity_exhaustion(
     )
 
 
+def _calc_bb_w_bottom_m_top(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    bb_window: int = 20,
+    lookback: int = 10,
+) -> pd.Series:
+    """John Bollinger (2001) W-Bottom & M-Top Structural Reversion (MR017).
+
+    W-Bottom: Prior low broke below lower BB, current low retests support but stays
+              inside lower BB, confirming buying support.
+    M-Top: Prior high broke above upper BB, current high retests resistance but stays
+           inside upper BB, confirming selling resistance.
+    """
+    n = len(close)
+    if n < bb_window + lookback:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sma = close.rolling(bb_window).mean()
+    std = close.rolling(bb_window).std()
+    bb_upper = (sma + 2.0 * std).to_numpy(dtype=float, na_value=np.nan)
+    bb_lower = (sma - 2.0 * std).to_numpy(dtype=float, na_value=np.nan)
+    sma_arr = sma.to_numpy(dtype=float, na_value=np.nan)
+
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+
+    penetrated_lower = (low < (sma - 2.0 * std)).astype(float)
+    penetrated_upper = (high > (sma + 2.0 * std)).astype(float)
+
+    prior_pen_lower = (
+        penetrated_lower.shift(1).rolling(lookback).max().to_numpy(dtype=float, na_value=np.nan)
+        > 0.5
+    )
+    prior_pen_upper = (
+        penetrated_upper.shift(1).rolling(lookback).max().to_numpy(dtype=float, na_value=np.nan)
+        > 0.5
+    )
+
+    prior_min_low = low.shift(1).rolling(lookback).min().to_numpy(dtype=float, na_value=np.nan)
+    prior_max_high = high.shift(1).rolling(lookback).max().to_numpy(dtype=float, na_value=np.nan)
+
+    valid = (
+        ~np.isnan(bb_lower)
+        & ~np.isnan(bb_upper)
+        & ~np.isnan(prior_min_low)
+        & ~np.isnan(prior_max_high)
+    )
+
+    w_bottom = (
+        valid
+        & prior_pen_lower
+        & (l_arr <= prior_min_low * 1.015)
+        & (l_arr >= bb_lower)
+        & (c_arr > o_arr)
+    )
+
+    m_top = (
+        valid
+        & prior_pen_upper
+        & (h_arr >= prior_max_high * 0.985)
+        & (h_arr <= bb_upper)
+        & (c_arr < o_arr)
+    )
+
+    hold = (
+        valid
+        & ~w_bottom
+        & ~m_top
+        & (((c_arr < sma_arr) & (c_arr > bb_lower)) | ((c_arr > sma_arr) & (c_arr < bb_upper)))
+    )
+
+    return pd.Series(
+        np.select(
+            [w_bottom, m_top, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

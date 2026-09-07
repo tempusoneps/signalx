@@ -10,6 +10,7 @@ from signalx.signals.mean_reversion import (
     MEAN_REVERSION_SIGNAL_COLUMNS,
     _calc_amihud_liquidity_exhaustion,
     _calc_bb_pct_b_hook_reversion,
+    _calc_bb_w_bottom_m_top,
     _calc_connors_rsi2_regime,
     _calc_dual_ma_disparity_index,
     _calc_ehlers_roofing_filter_reversion,
@@ -212,5 +213,12 @@ def test_calc_amihud_liquidity_exhaustion():
     sig = _calc_amihud_liquidity_exhaustion(
         df["open"], df["high"], df["low"], df["close"], df["volume"]
     )
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_bb_w_bottom_m_top():
+    df = make_synthetic_ohlcv(120)
+    sig = _calc_bb_w_bottom_m_top(df["open"], df["high"], df["low"], df["close"])
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
