@@ -68,3 +68,11 @@ This document establishes the mandatory architectural rules and invariant constr
   6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
   7. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
   8. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
+
+---
+
+## Rule 8: Gitignore Compliance
+- **Requirement**: Always check all `.gitignore` files before staging or committing any files.
+- **Prohibited**:
+  - Never force-add (`git add -f`) any file or directory that is ignored by `.gitignore`.
+  - Staging or committing gitignored files (such as `.superpowers`, `docs/superpowers`, `.venv`, cache files, or logs) is strictly prohibited.
