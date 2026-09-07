@@ -66,7 +66,7 @@ This document establishes the mandatory architectural rules and invariant constr
   4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
   5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
   6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
-  7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (12 signals)
+  7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (17 signals)
   8. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
   9. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
 

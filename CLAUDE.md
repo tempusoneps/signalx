@@ -164,7 +164,7 @@ This document establishes the mandatory architectural rules and invariant constr
   4. `volume` (Volume Dynamics & Flow Accumulation) (32 signals)
   5. `candlestick` (Price Action Geometry & Multi-Bar Formations) (28 signals)
   6. `smc` (Smart Money Concepts & Structural Order Flow) (11 signals)
-  7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (12 signals)
+  7. `mean_reversion` (Overbought/Oversold Reversals & Statistical Extremes) (17 signals)
   8. `statistical` (Z-Scores, Regressions & Regime Filters) (20 signals)
   9. `composite` (Consensus, Confluence & Ensemble Voting) (13 signals)
 
@@ -217,7 +217,7 @@ signalx/
 │           ├── __init__.py       # Dispatches all category generators
 │           ├── candlestick.py    # Candlestick geometry and price action patterns (28 signals)
 │           ├── composite.py      # Consensus and ensemble voting signals (13 signals)
-│           ├── mean_reversion.py # Overbought/oversold reversals & statistical extremes (12 signals)
+│           ├── mean_reversion.py # Overbought/oversold reversals & statistical extremes (17 signals)
 │           ├── momentum.py       # Oscillators and momentum indicators (39 signals)
 │           ├── session_helper.py # VN30F1M intraday session context extraction utility
 │           ├── smc.py            # Smart Money Concepts, Order Flow, FVG & Liquidity (11 signals)
@@ -255,7 +255,7 @@ signalx/
 ### Core Library (`src/signalx/`)
 - `constants.py`: Holds `SignalState` class with strings `"buy"`, `"sell"`, `"hold"`, `"none"` and `ALL_SIGNAL_STATES` frozenset.
 - `utils.py`: Provides input data sanitation (`normalize_ohlcv`), case-insensitive column aliasing, DataFrame I/O (`load_dataframe`, `save_dataframe`), and frequency metrics (`compute_signal_stats`).
-- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 251 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
+- `metadata.py`: Implements `SignalMetadata` data structures, master registries `SIGNAL_CATALOG` and `SIGNAL_CODE_CATALOG` containing all 256 signals with trigger rules, lookup functions (`get_signal_by_code`, `get_signal_by_name`, `get_signal_metadata`), and bidirectional DataFrame column renaming utilities (`to_code_names`, `to_semantic_names`, `get_code_to_name_map`, `get_name_to_code_map`).
 - `core.py`: Exposes `generate_signals(df, drop_ohlcv=False, show_progress=False, naming="code")` which coordinates normalization, dispatches category signal extractors, applies requested naming convention (`"code"` or `"semantic"`), and aggregates results.
 - `cli.py`: Implements the `signalx` command-line executable using `argparse` (subcommands: `generate`, `inspect`, `stats`, `list`).
 
@@ -267,7 +267,7 @@ signalx/
 - `volume.py`: On-Balance Volume (OBV), Chaikin Money Flow (CMF), Rolling VWAP crossovers & standard deviation bands, Volume Spikes with directional candles, PVT, ADL, Force Index, Ease of Movement (EOM), VSA Confirmation, VPT Divergence, Volume Trends, VN30F1M Session VWAP Cross, RVOL Time Bucket, CVD Divergence, Stopping Climax (32 signals).
 - `candlestick.py`: Engulfing, Hammer, Inverted Hammer, Shooting Star, Hanging Man, Pinbar, Marubozu, Harami, Inside Bar, Outside Bar, Doji, Three White Soldiers / Black Crows, Consecutive 3/5, Morning/Evening Star, Piercing Line / Dark Cloud, Tweezer Tops/Bottoms, Couple Candlestick, Fakey Pattern, Gap Up/Down, Body Size Expansion, Wick Rejection, Body Direction, Close Strength, Price Rejection, Break & Retest, Trend Exhaustion, Final Push, Thrust Bar, NR7, Wide Range Reversal (28 signals).
 - `smc.py`: Fair Value Gaps (FVG mitigation & retest), Order Block (OB) retest, Break of Structure (BOS), Change of Character (CHoCH), Market Structure Break (MSB), Liquidity Sweeps, Equal Highs/Lows (EQH/EQL), ICT Judas Swing, Inducement (IDM) sweep, VN30F1M PDH/PDL Sweep Reversal (11 signals).
-- `mean_reversion.py`: Connors RSI(2), Ornstein-Uhlenbeck spread reversion, VWAP distance Z-score stretch, Bollinger Bands %B extreme hook, Keltner Channel 3-ATR re-entry, Kurtosis fat-tail shock, Disparity index stretch, Linear regression residual Z-score, Williams %R & CCI confluence hook, Session IB range fade, Volume climax absorption, Multi-period deviation consensus (12 signals).
+- `mean_reversion.py`: Connors RSI(2), Ornstein-Uhlenbeck spread reversion, VWAP distance Z-score stretch, Bollinger Bands %B extreme hook, Keltner Channel 3-ATR re-entry, Kurtosis fat-tail shock, Disparity index stretch, Linear regression residual Z-score, Williams %R & CCI confluence hook, Session IB range fade, Volume climax absorption, Multi-period deviation consensus, Lehmann short-term reversal, Lo & MacKinlay variance ratio, Ehlers roofing filter, Amihud illiquidity exhaustion, Bollinger Bands W-Bottom & M-Top (17 signals).
 - `statistical.py`: Rolling Price Z-Scores, Rolling Return Z-Scores, Kaufman Efficiency Ratio (KER), Choppiness Index, Rolling Quantile Extremes, Linear Regression Slope & Price Cross, MA Stretch Z-Score, Hurst Proxy, Range Mid Reversion, Price Acceleration (20 signals).
 - `composite.py`: Family consensus signals (Trend, Momentum, MA), Master Ensemble (weighted multi-indicator), Trend-Momentum Alignment, Breakout + Volume confirmation, Multi-oscillator mean reversion confluence, MACD Hist + Candlestick confluence, VN30F1M Intraday Confluence (13 signals).
 - `__init__.py`: Aggregates all category functions into `run_all_signal_generators(df)`.
@@ -389,11 +389,11 @@ This document defines the configuration options, parameters, and input/output da
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `df` | `pandas.DataFrame` | *Required* | Raw OHLCV DataFrame. |
-| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 251 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 251 signal columns. |
+| `drop_ohlcv` | `bool` | `False` | When `True`, returns only the 256 signal columns (and timestamp column if present). When `False`, returns original columns concatenated with the 256 signal columns. |
 | `show_progress` | `bool` | `False` | When `True`, displays real-time multi-progress bars per signal category in terminal. |
 | `naming` | `Literal["code", "semantic"]` | `"code"` | Output column naming format. `"code"` produces compact standardized identifiers (e.g. `TRD001_signal`), while `"semantic"` produces descriptive identifiers (e.g. `trend_sma_cross_5_20_signal`). |
 
-**Return Value**: `pandas.DataFrame` containing all 251 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
+**Return Value**: `pandas.DataFrame` containing all 256 signal columns with string states (`"buy"`, `"sell"`, `"hold"`, `"none"`).
 
 ---
 
@@ -402,7 +402,7 @@ This document defines the configuration options, parameters, and input/output da
 `signalx` CLI is invoked via `signalx <command> [options]`.
 
 ### Subcommand: `generate`
-Extracts all 251 trading signals from an input dataset file.
+Extracts all 256 trading signals from an input dataset file.
 ```bash
 signalx generate <input_path> [-o <output_path>] [--drop-ohlcv] [--stats-report] [--no-progress] [--naming {code,semantic}]
 ```
@@ -467,7 +467,7 @@ import signalx
 # 1. Load your OHLCV data
 df = pd.read_parquet("datasets/sample_ohlcv.parquet")
 
-# 2. Extract all 251 standardized signals in coded format (default)
+# 2. Extract all 256 standardized signals in coded format (default)
 signals_df = signalx.generate_signals(df, show_progress=True)
 
 # 3. View extracted signal columns (e.g. TRD001_signal, MOM001_signal, CMP003_signal)
@@ -627,7 +627,7 @@ uv run signalx generate datasets/sample_ohlcv.parquet \
   -o datasets/sample_signals.parquet \
   --stats-report
 
-# Output only the 251 signal columns (drop OHLCV price columns)
+# Output only the 256 signal columns (drop OHLCV price columns)
 uv run signalx generate datasets/sample_ohlcv.csv \
   -o datasets/signals_only.parquet \
   --drop-ohlcv
@@ -650,7 +650,7 @@ uv run signalx stats datasets/sample_signals.parquet --json
 
 ### Listing Signal Catalog
 ```bash
-# List all 251 signals with codes, names, and descriptions
+# List all 256 signals with codes, names, and descriptions
 uv run signalx list
 
 # Filter listing to a specific category
@@ -659,9 +659,9 @@ uv run signalx list --category mean_reversion
 
 ---
 
-# SignalX Signals Catalog (251 Signals)
+# SignalX Signals Catalog (256 Signals)
 
-`signalx` provides 251 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
+`signalx` provides 256 standardized trading signals partitioned across 9 distinct analytical families. Every signal strictly outputs values from `{"buy", "sell", "hold", "none"}`.
 
 ## Summary by Category
 
@@ -669,14 +669,14 @@ uv run signalx list --category mean_reversion
 | :--- | :--- | :--- |
 | **Candlestick** | 28 | Price action geometry, rejection wicks, and single/multi-bar reversal formations |
 | **Composite** | 13 | Consensus voting, trend/momentum confluence, and multi-indicator ensembles |
-| **Mean Reversion** | 12 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
+| **Mean Reversion** | 17 | Overbought/oversold pullbacks, statistical stretch Z-scores, channel re-entries, and climax absorption |
 | **Momentum** | 39 | Oscillators, overbought/oversold boundaries, and speed of price change |
 | **SMC** | 11 | Smart Money Concepts, market structure breaks, order blocks, FVG mitigation, and liquidity sweeps |
 | **Statistical** | 20 | Rolling Z-scores, linear regression slope/crossings, and market efficiency filters |
 | **Trend** | 52 | Directional trend following, moving average crossovers, MACD, and regime tracking |
 | **Volatility** | 44 | Band breakouts, volatility squeezes, channel bounds, and ATR trailing stops |
 | **Volume** | 32 | Volume dynamics, flow accumulation/distribution, VWAP, and volume spikes |
-| **Total** | **251** | **Full Quantitative Feature Suite** |
+| **Total** | **256** | **Full Quantitative Feature Suite** |
 
 ## Candlestick Signals (28 Signals)
 
@@ -789,7 +789,7 @@ uv run signalx list --category mean_reversion
 | `SMC010_signal` | `smc_inducement_sweep_signal` | Inducement (IDM) minor liquidity sweep & wick rejection | `signalx_native` | Low sweeps previous low with lower wick >= 50% and close > open (Bullish Inducement) | High sweeps previous high with upper wick >= 50% and close < open (Bearish Inducement) |
 | `SMC011_signal` | `smc_pdh_pdl_sweep_signal` | VN30F1M 5m Previous Day High/Low liquidity sweep and reversal (wick through PDH/PDL, close back inside) | `signalx_native` | Price wicks below PDL then closes above it (bullish PDL sweep reversal) | Price wicks above PDH then closes below it (bearish PDH sweep reversal) |
 
-## Mean Reversion Signals (12 Signals)
+## Mean Reversion Signals (17 Signals)
 
 | Code | Semantic Name | Description | Library | Buy Trigger | Sell Trigger |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -805,6 +805,11 @@ uv run signalx list --category mean_reversion
 | `MR010_signal` | `mr_session_range_fade_signal` | Intraday Session Initial Balance Fade (false extension beyond 30m IB range) | `signalx_native` | Price wicks above IB High by >0.2% but closes back inside IB | Price wicks below IB Low by >0.2% but closes back inside IB |
 | `MR011_signal` | `mr_volume_climax_absorption_reversion_signal` | Volume Climax Absorption at Extremes (3x volume spike with rejection wick at 20-bar extreme) | `signalx_native` | Volume spike at 20-bar Low with lower rejection wick >= 40% and bullish close | Volume spike at 20-bar High with upper rejection wick >= 40% and bearish close |
 | `MR012_signal` | `mr_multi_period_stretch_consensus_signal` | Multi-Period Deviation Consensus (simultaneous 10, 20, 50-bar stretch > 1.8 sigma) | `signalx_native` | Price simultaneously < mean - 1.8 sigma for 10, 20, and 50-bar windows | Price simultaneously > mean + 1.8 sigma for 10, 20, and 50-bar windows |
+| `MR013_signal` | `mr_lehmann_short_term_reversal_signal` | Lehmann Short-Term Return Reversal (3-bar standardized return shock reversion) | `signalx_native` | Return Z-Score < -2.2 with bullish close | Return Z-Score > +2.2 with bearish close |
+| `MR014_signal` | `mr_lo_mackinlay_variance_ratio_signal` | Lo & MacKinlay Variance Ratio Reversion (multi-period VR < 0.75 mean-reverting regime) | `signalx_native` | VR < 0.75 and Price Z-Score < -1.8 with higher close | VR < 0.75 and Price Z-Score > +1.8 with lower close |
+| `MR015_signal` | `mr_ehlers_roofing_filter_reversion_signal` | Ehlers Roofing Filter Reversion (2-pole HPF + 2-pole SuperSmoother cycle hook) | `signalx_native` | Standardized Roofing Filter hooks up from < -1.8 | Standardized Roofing Filter hooks down from > +1.8 |
+| `MR016_signal` | `mr_amihud_liquidity_exhaustion_signal` | Amihud Liquidity Exhaustion Reversion (ILLIQ Z-score > 2.0 with rejection wick at extreme) | `signalx_native` | ILLIQ Z-Score > 2.0 at 15-bar Low with lower wick >= 35% and bullish close | ILLIQ Z-Score > 2.0 at 15-bar High with upper wick >= 35% and bearish close |
+| `MR017_signal` | `mr_bb_w_bottom_m_top_signal` | Bollinger Bands W-Bottom & M-Top Reversion (structural double-touch band test) | `signalx_native` | W-Bottom support test holding inside lower BB with bullish close | M-Top resistance test holding inside upper BB with bearish close |
 
 ## Statistical Signals (20 Signals)
 
