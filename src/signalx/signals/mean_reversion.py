@@ -1452,6 +1452,79 @@ def _calc_vn30_midday_lunch_range_fade(
     )
 
 
+def _calc_vn30_intraday_exhaustion_fade(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    rsi_window: int = 5,
+    run_bars: int = 4,
+    pts_thresh: float = 7.0,
+) -> pd.Series:
+    """VN30F1M Intraday Consecutive Thrust Exhaustion Fade (MR024).
+
+    Fades unsustainable multi-bar momentum runs (>= 4 consecutive bars, >= pts_thresh points)
+    when RSI(5) reaches extreme levels (< 15 or > 85).
+    Buy: 4-bar drop, RSI(5) < 15, bullish reversal bar.
+    Sell: 4-bar surge, RSI(5) > 85, bearish reversal bar.
+    """
+    n = len(close)
+    if n < run_bars + rsi_window:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    rsi = (
+        ta.momentum.RSIIndicator(close, window=rsi_window, fillna=False)
+        .rsi()
+        .to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+
+    is_green = (c_arr > o_arr).astype(int)
+    is_red = (c_arr < o_arr).astype(int)
+
+    # 4 consecutive directional bars (prior run before reversal or ending at current bar)
+    green_s = pd.Series(is_green, index=close.index)
+    red_s = pd.Series(is_red, index=close.index)
+
+    consec_green = (
+        green_s.rolling(run_bars).sum().to_numpy(dtype=float, na_value=0.0) == run_bars
+    ) | (green_s.shift(1).rolling(run_bars).sum().to_numpy(dtype=float, na_value=0.0) == run_bars)
+    consec_red = (red_s.rolling(run_bars).sum().to_numpy(dtype=float, na_value=0.0) == run_bars) | (
+        red_s.shift(1).rolling(run_bars).sum().to_numpy(dtype=float, na_value=0.0) == run_bars
+    )
+
+    open_4ago = open_p.shift(run_bars - 1).to_numpy(dtype=float, na_value=np.nan)
+    run_dist = c_arr - open_4ago
+
+    valid = ~np.isnan(rsi) & ~np.isnan(run_dist)
+
+    ema10 = close.ewm(span=10).mean().to_numpy(dtype=float, na_value=np.nan)
+
+    buy = valid & consec_red & (run_dist <= -pts_thresh) & (rsi < 15.0) & (c_arr > o_arr)
+    sell = valid & consec_green & (run_dist >= pts_thresh) & (rsi > 85.0) & (c_arr < o_arr)
+    hold = (
+        valid
+        & ~buy
+        & ~sell
+        & (
+            ((run_dist <= -pts_thresh) & (c_arr < ema10))
+            | ((run_dist >= pts_thresh) & (c_arr > ema10))
+        )
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
