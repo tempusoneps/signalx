@@ -1525,6 +1525,90 @@ def _calc_vn30_intraday_exhaustion_fade(
     )
 
 
+def _calc_vn30_session_vwap_band_fade(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    session_ctx: SessionContext,
+    sigma_mult: float = 2.5,
+) -> pd.Series:
+    """VN30F1M Session VWAP 2.5-Sigma Band Reversal (MR025).
+
+    Reversion hook when price pierces Session VWAP +/- 2.5 sigma and hooks back inside.
+    Buy: Low.shift(1) < VWAP - 2.5*sigma and Close >= VWAP - 2.5*sigma with bullish close.
+    Sell: High.shift(1) > VWAP + 2.5*sigma and Close <= VWAP + 2.5*sigma with bearish close.
+    """
+    n = len(close)
+    if n < 5:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+    typ_price = (high + low + close) / 3.0
+    vol_clamped = np.maximum(volume.to_numpy(dtype=float, na_value=1.0), 1.0)
+    vol_s = pd.Series(vol_clamped, index=close.index)
+
+    pv = typ_price * vol_s
+    cum_pv = pv.groupby(sess_id).cumsum()
+    cum_v = vol_s.groupby(sess_id).cumsum()
+
+    vwap = cum_pv / np.maximum(cum_v, 1e-9)
+    vwap_arr = vwap.to_numpy(dtype=float, na_value=np.nan)
+
+    sess_std = (
+        close.groupby(sess_id)
+        .transform(lambda s: s.expanding().std())
+        .to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    valid_band = ~np.isnan(vwap_arr) & ~np.isnan(sess_std) & (sess_std > 1e-8)
+    upper_band = vwap_arr + sigma_mult * sess_std
+    lower_band = vwap_arr - sigma_mult * sess_std
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+
+    l_prev = low.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    h_prev = high.shift(1).to_numpy(dtype=float, na_value=np.nan)
+    lower_prev = (
+        pd.Series(lower_band, index=close.index).shift(1).to_numpy(dtype=float, na_value=np.nan)
+    )
+    upper_prev = (
+        pd.Series(upper_band, index=close.index).shift(1).to_numpy(dtype=float, na_value=np.nan)
+    )
+
+    valid = (
+        valid_band
+        & ~np.isnan(l_prev)
+        & ~np.isnan(h_prev)
+        & ~np.isnan(lower_prev)
+        & ~np.isnan(upper_prev)
+    )
+
+    buy = valid & (l_prev < lower_prev) & (c_arr >= lower_band) & (c_arr > o_arr)
+    sell = valid & (h_prev > upper_prev) & (c_arr <= upper_band) & (c_arr < o_arr)
+    hold = (
+        valid
+        & ~buy
+        & ~sell
+        & (
+            ((c_arr > lower_band) & (c_arr < vwap_arr))
+            | ((c_arr < upper_band) & (c_arr > vwap_arr))
+        )
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

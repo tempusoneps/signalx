@@ -29,6 +29,7 @@ from signalx.signals.mean_reversion import (
     _calc_vn30_opening_drive_reversal,
     _calc_vn30_pdh_pdl_false_break_fade,
     _calc_vn30_pre_atc_vwap_snapback,
+    _calc_vn30_session_vwap_band_fade,
     _calc_volume_climax_absorption_reversion,
     _calc_vwap_distance_zscore,
     _calc_wr_cci_double_oversold,
@@ -287,5 +288,15 @@ def test_calc_vn30_midday_lunch_range_fade():
 def test_calc_vn30_intraday_exhaustion_fade():
     df = make_synthetic_ohlcv(150)
     sig = _calc_vn30_intraday_exhaustion_fade(df["open"], df["high"], df["low"], df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
+def test_calc_vn30_session_vwap_band_fade():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_vn30_session_vwap_band_fade(
+        df["open"], df["high"], df["low"], df["close"], df["volume"], ctx
+    )
     assert len(sig) == len(df)
     assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
