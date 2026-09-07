@@ -1671,7 +1671,7 @@ def _initialize_default_catalog() -> None:
         )
 
     # -------------------------------------------------------------------------
-    # 7. MEAN REVERSION SIGNALS (17 signals)
+    # 7. MEAN REVERSION SIGNALS (25 signals)
     # -------------------------------------------------------------------------
     mr_definitions = [
         (
@@ -1792,6 +1792,62 @@ def _initialize_default_catalog() -> None:
             "signalx_native",
             "W-Bottom support test holding inside lower BB with bullish close",
             "M-Top resistance test holding inside upper BB with bearish close",
+        ),
+        (
+            "mr_vn30_morning_gap_fade_signal",
+            "VN30F1M Morning ATO Gap Fade (08:45-09:25 gap vs Previous Day Close reversion)",
+            "signalx_native",
+            "Gap down <= -3.0 pts with morning bullish bounce toward PDC",
+            "Gap up >= +3.0 pts with morning bearish rejection toward PDC",
+        ),
+        (
+            "mr_vn30_opening_drive_reversal_signal",
+            "VN30F1M Opening Drive Reversal (08:45-09:20 15m thrust exhaustion & snapback to Open)",
+            "signalx_native",
+            "Opening downward drive >= 5.0 pts followed by bullish rejection wick >= 35%",
+            "Opening upward drive >= 5.0 pts followed by bearish rejection wick >= 35%",
+        ),
+        (
+            "mr_vn30_afternoon_reversal_trap_signal",
+            "VN30F1M Afternoon Open Trap Reversal (13:00-13:25 false breakout trap of morning range)",
+            "signalx_native",
+            "Wicks below Morning Low by <= 0.4% but closes back inside with bullish close",
+            "Wicks above Morning High by <= 0.4% but closes back inside with bearish close",
+        ),
+        (
+            "mr_vn30_pre_atc_vwap_snapback_signal",
+            "VN30F1M Pre-ATC Snapback to VWAP (14:00-14:25 intraday position squaring toward VWAP)",
+            "signalx_native",
+            "In pre-ATC window, price < VWAP - 2.0 sigma with bullish bounce close",
+            "In pre-ATC window, price > VWAP + 2.0 sigma with bearish reversal close",
+        ),
+        (
+            "mr_vn30_pdh_pdl_false_break_fade_signal",
+            "VN30F1M PDH/PDL False Breakout Liquidity Fade (failed breakout beyond prior day high/low)",
+            "signalx_native",
+            "Low wicks below PDL but closes back above with lower wick >= 35%",
+            "High wicks above PDH but closes back below with upper wick >= 35%",
+        ),
+        (
+            "mr_vn30_midday_lunch_range_fade_signal",
+            "VN30F1M Midday Lunch Range Edge Fade (11:00-11:30 volume dry-up drift reversal)",
+            "signalx_native",
+            "Pre-lunch volume < 0.85x SMA20, low touches morning range low with bullish rejection",
+            "Pre-lunch volume < 0.85x SMA20, high touches morning range high with bearish rejection",
+        ),
+        (
+            "mr_vn30_intraday_exhaustion_fade_signal",
+            "VN30F1M Intraday Thrust Exhaustion Fade (>= 4 consecutive bars, >= 7 pts, RSI(5) extreme)",
+            "signalx_native",
+            "4-bar drop >= 7.0 pts with RSI(5) < 15.0 and bullish reversal close",
+            "4-bar rally >= 7.0 pts with RSI(5) > 85.0 and bearish reversal close",
+        ),
+        (
+            "mr_vn30_session_vwap_band_fade_signal",
+            "VN30F1M Session VWAP 2.5-Sigma Band Reversal (re-entry after 2.5-sigma band breach)",
+            "signalx_native",
+            "Prior Low < VWAP - 2.5 sigma and current Close >= VWAP - 2.5 sigma with bullish close",
+            "Prior High > VWAP + 2.5 sigma and current Close <= VWAP + 2.5 sigma with bearish close",
         ),
     ]
     for idx, (name, desc, lib, buy_t, sell_t) in enumerate(mr_definitions, start=1):

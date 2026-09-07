@@ -67,7 +67,7 @@ def test_full_pipeline_produces_all_signals_default_code():
         assert col in res.columns
 
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 256
+    assert len(signal_cols) == 264
     assert len(signal_cols) == len(SIGNAL_CODE_CATALOG)
     assert set(signal_cols) == set(SIGNAL_CODE_CATALOG.keys())
 
@@ -86,7 +86,7 @@ def test_full_pipeline_naming_semantic():
     assert len(res) == 150
 
     signal_cols = [c for c in res.columns if c.endswith("_signal")]
-    assert len(signal_cols) == 256
+    assert len(signal_cols) == 264
     assert len(signal_cols) == len(SIGNAL_CATALOG)
     assert set(signal_cols) == set(SIGNAL_CATALOG.keys())
 
