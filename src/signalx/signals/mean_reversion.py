@@ -704,6 +704,61 @@ def _calc_multi_period_stretch_consensus(close: pd.Series) -> pd.Series:
     )
 
 
+def _calc_lehmann_short_term_reversal(
+    open_p: pd.Series,
+    close: pd.Series,
+    return_window: int = 3,
+    z_window: int = 20,
+    z_thresh: float = 2.2,
+) -> pd.Series:
+    """Lehmann (1990) Short-Term Return Reversal (MR013).
+
+    Measures rolling standardized return shock over short horizon.
+    Buy: Z_ret < -z_thresh and Close > Open (bounce off oversold shock)
+    Sell: Z_ret > +z_thresh and Close < Open (rejection off overbought shock)
+    Hold: Mean-reverting continuation (-z_thresh <= Z_ret < -0.8 or 0.8 < Z_ret <= z_thresh)
+    """
+    n = len(close)
+    if n < z_window + return_window:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    c_lag = close.shift(return_window)
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    clag_arr = c_lag.to_numpy(dtype=float, na_value=np.nan)
+
+    valid_c = ~np.isnan(c_arr) & ~np.isnan(clag_arr) & (clag_arr > 0)
+    r3 = np.full(n, np.nan, dtype=float)
+    np.divide(c_arr - clag_arr, clag_arr, out=r3, where=valid_c)
+
+    r3_s = pd.Series(r3, index=close.index)
+    roll_mean = r3_s.rolling(z_window).mean().to_numpy(dtype=float, na_value=np.nan)
+    roll_std = r3_s.rolling(z_window).std().to_numpy(dtype=float, na_value=np.nan)
+
+    valid_z = ~np.isnan(r3) & ~np.isnan(roll_mean) & ~np.isnan(roll_std) & (roll_std > 1e-12)
+    z_ret = np.zeros(n, dtype=float)
+    np.divide(r3 - roll_mean, roll_std, out=z_ret, where=valid_z)
+
+    buy = valid_z & (z_ret < -z_thresh) & (c_arr > o_arr)
+    sell = valid_z & (z_ret > z_thresh) & (c_arr < o_arr)
+    hold = (
+        valid_z
+        & ~buy
+        & ~sell
+        & (((z_ret >= -z_thresh) & (z_ret < -0.8)) | ((z_ret <= z_thresh) & (z_ret > 0.8)))
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,

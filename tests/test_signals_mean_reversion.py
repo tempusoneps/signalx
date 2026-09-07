@@ -13,6 +13,7 @@ from signalx.signals.mean_reversion import (
     _calc_dual_ma_disparity_index,
     _calc_keltner_atr_stretch_reentry,
     _calc_kurtosis_fat_tail_exhaustion,
+    _calc_lehmann_short_term_reversal,
     _calc_linreg_residual_zscore,
     _calc_multi_period_stretch_consensus,
     _calc_ou_process_spread_reversion,
@@ -180,3 +181,10 @@ def test_show_progress_flag():
     res = generate_mean_reversion_signals(df, show_progress=True)
     assert len(res) == 50
     assert len(res.columns) == 12
+
+
+def test_calc_lehmann_short_term_reversal():
+    df = make_synthetic_ohlcv(120)
+    sig = _calc_lehmann_short_term_reversal(df["open"], df["close"])
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
