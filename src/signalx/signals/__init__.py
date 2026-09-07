@@ -7,6 +7,10 @@ import pandas as pd
 from signalx.metadata import to_code_names
 from signalx.signals.candlestick import generate_candlestick_signals
 from signalx.signals.composite import generate_composite_signals
+from signalx.signals.mean_reversion import (
+    MEAN_REVERSION_SIGNAL_COLUMNS,
+    generate_mean_reversion_signals,
+)
 from signalx.signals.momentum import generate_momentum_signals
 from signalx.signals.smc import SMC_SIGNAL_COLUMNS, generate_smc_signals
 from signalx.signals.statistical import generate_statistical_signals
@@ -44,9 +48,12 @@ def run_all_signal_generators(
     volume_df = generate_volume_signals(normalized, show_progress=show_progress)
     cdl_df = generate_candlestick_signals(normalized, show_progress=show_progress)
     smc_df = generate_smc_signals(normalized, show_progress=show_progress)
+    mr_df = generate_mean_reversion_signals(normalized, show_progress=show_progress)
     stat_df = generate_statistical_signals(normalized, show_progress=show_progress)
 
-    intermediate = pd.concat([trend_df, mom_df, vol_df, volume_df, cdl_df, smc_df, stat_df], axis=1)
+    intermediate = pd.concat(
+        [trend_df, mom_df, vol_df, volume_df, cdl_df, smc_df, mr_df, stat_df], axis=1
+    )
     comp_df = generate_composite_signals(normalized, intermediate, show_progress=show_progress)
 
     full_signals = pd.concat([intermediate, comp_df], axis=1)
@@ -57,9 +64,11 @@ def run_all_signal_generators(
 
 
 __all__ = [
+    "MEAN_REVERSION_SIGNAL_COLUMNS",
     "SMC_SIGNAL_COLUMNS",
     "generate_candlestick_signals",
     "generate_composite_signals",
+    "generate_mean_reversion_signals",
     "generate_momentum_signals",
     "generate_smc_signals",
     "generate_statistical_signals",
