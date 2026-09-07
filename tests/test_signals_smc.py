@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from signalx.constants import ALL_SIGNAL_STATES
+from signalx.signals.session_helper import extract_session_context
 from signalx.signals.smc import (
     SMC_SIGNAL_COLUMNS,
     _calc_break_of_structure,
@@ -15,6 +16,7 @@ from signalx.signals.smc import (
     _calc_judas_swing,
     _calc_liquidity_sweep,
     _calc_market_structure_break,
+    _calc_morning_midpoint_acceptance,
     _calc_order_block_retest,
     _calc_pdh_pdl_sweep,
     generate_smc_signals,
@@ -40,10 +42,10 @@ def make_synthetic_ohlcv(n: int = 150, seed: int = 42) -> pd.DataFrame:
     )
 
 
-def test_smc_signals_all_11_columns_present():
+def test_smc_signals_all_12_columns_present():
     df = make_synthetic_ohlcv(100)
     res = generate_smc_signals(df)
-    assert len(res.columns) == 11
+    assert len(res.columns) == 12
     assert list(res.columns) == SMC_SIGNAL_COLUMNS
 
 
@@ -58,12 +60,12 @@ def test_smc_signals_empty_and_short_dataframe():
     empty_df = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     res = generate_smc_signals(empty_df)
     assert len(res) == 0
-    assert len(res.columns) == 11
+    assert len(res.columns) == 12
 
     short_df = make_synthetic_ohlcv(3)
     res_short = generate_smc_signals(short_df)
     assert len(res_short) == 3
-    assert len(res_short.columns) == 11
+    assert len(res_short.columns) == 12
 
 
 def test_smc_fvg_mitigation_direct():
@@ -95,8 +97,17 @@ def test_smc_all_direct_calculators():
         assert set(s.unique()).issubset(ALL_SIGNAL_STATES)
 
 
+def test_calc_morning_midpoint_acceptance_direct():
+    df = make_synthetic_ohlcv(150)
+    ctx = extract_session_context(df)
+    sig = _calc_morning_midpoint_acceptance(df["high"], df["low"], df["close"], ctx)
+    assert isinstance(sig, pd.Series)
+    assert len(sig) == len(df)
+    assert set(sig.unique()).issubset(ALL_SIGNAL_STATES)
+
+
 def test_smc_signals_progress():
     df = make_synthetic_ohlcv(50)
     res = generate_smc_signals(df, show_progress=True)
-    assert len(res.columns) == 11
+    assert len(res.columns) == 12
     assert list(res.columns) == SMC_SIGNAL_COLUMNS

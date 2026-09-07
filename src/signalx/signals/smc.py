@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import ta
 
 from signalx.constants import SignalState
 from signalx.progress import GroupProgressBar
-from signalx.signals.session_helper import extract_session_context
+from signalx.signals.session_helper import SessionContext, extract_session_context
 from signalx.utils import normalize_ohlcv
 
 SMC_SIGNAL_COLUMNS = [
@@ -20,6 +21,7 @@ SMC_SIGNAL_COLUMNS = [
     "smc_judas_swing_signal",
     "smc_inducement_sweep_signal",
     "smc_pdh_pdl_sweep_signal",
+    "smc_morning_midpoint_acceptance_signal",
 ]
 
 
@@ -417,8 +419,85 @@ def _calc_pdh_pdl_sweep(
     )
 
 
+def _calc_morning_midpoint_acceptance(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """Calculate Morning Midpoint Acceptance Signal (SMC012).
+
+    Morning_Mid = (High_<=11:00 + Low_<=11:00) / 2.0
+    Accept_long = rolling_mean(Close > Morning_Mid, 4).shift(1)
+    Accept_short = rolling_mean(Close < Morning_Mid, 4).shift(1)
+
+    Triggers (evaluated in afternoon window t >= 13:00):
+        buy: t >= 13:00 and Accept_long >= 0.50 and Close > High_<=11:00 and RSI_8 > 54
+        sell: t >= 13:00 and Accept_short >= 0.50 and Close < Low_<=11:00 and RSI_8 < 46
+        hold: t >= 13:00 and ((Close > High_<=11:00) | (Close < Low_<=11:00))
+        none: default
+    """
+    if len(close) == 0:
+        return pd.Series(dtype=str, index=close.index)
+
+    is_datetime = pd.api.types.is_string_dtype(session_ctx.session_id) or (
+        len(session_ctx.session_id) > 0 and isinstance(session_ctx.session_id.iloc[0], str)
+    )
+
+    if is_datetime:
+        morning_mask = session_ctx.time_minutes <= 660
+        afternoon_mask = session_ctx.time_minutes >= 780
+    else:
+        morning_mask = session_ctx.bar_in_session <= 25
+        afternoon_mask = session_ctx.bar_in_session >= 36
+
+    morning_high_sub = high.where(morning_mask)
+    morning_low_sub = low.where(morning_mask)
+    morning_high = morning_high_sub.groupby(session_ctx.session_id, sort=False).transform("max")
+    morning_low = morning_low_sub.groupby(session_ctx.session_id, sort=False).transform("min")
+    morning_mid = (morning_high + morning_low) / 2.0
+
+    accept_long = (close > morning_mid).astype(float).rolling(4, min_periods=1).mean().shift(1)
+    accept_short = (close < morning_mid).astype(float).rolling(4, min_periods=1).mean().shift(1)
+
+    try:
+        rsi8 = ta.momentum.RSIIndicator(close=close, window=8, fillna=False).rsi()
+    except Exception:
+        rsi8 = pd.Series(np.nan, index=close.index)
+
+    c = close.to_numpy(dtype=float, na_value=np.nan)
+    mh = morning_high.to_numpy(dtype=float, na_value=np.nan)
+    ml = morning_low.to_numpy(dtype=float, na_value=np.nan)
+    al = accept_long.to_numpy(dtype=float, na_value=np.nan)
+    as_ = accept_short.to_numpy(dtype=float, na_value=np.nan)
+    r8 = rsi8.to_numpy(dtype=float, na_value=np.nan)
+    is_afternoon = afternoon_mask.to_numpy(dtype=bool)
+
+    valid = (
+        is_afternoon
+        & ~np.isnan(c)
+        & ~np.isnan(mh)
+        & ~np.isnan(ml)
+        & ~np.isnan(al)
+        & ~np.isnan(as_)
+        & ~np.isnan(r8)
+    )
+
+    buy = valid & (al >= 0.50) & (c > mh) & (r8 > 54.0)
+    sell = valid & (as_ >= 0.50) & (c < ml) & (r8 < 46.0)
+    hold = valid & ~buy & ~sell & ((c > mh) | (c < ml))
+
+    condlist = [buy, sell, hold]
+    choicelist = [SignalState.BUY, SignalState.SELL, SignalState.HOLD]
+    return pd.Series(
+        np.select(condlist, choicelist, default=SignalState.NONE),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_smc_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.DataFrame:
-    """Generate all 11 Smart Money Concepts (SMC) signals from OHLCV dataframe.
+    """Generate all 12 Smart Money Concepts (SMC) signals from OHLCV dataframe.
 
     Parameters
     ----------
@@ -430,7 +509,7 @@ def generate_smc_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.Da
     Returns
     -------
     pd.DataFrame
-        DataFrame containing 11 columns ending with '_signal', with values in
+        DataFrame containing 12 columns ending with '_signal', with values in
         ['buy', 'sell', 'hold', 'none'] and index matching the input df.
     """
     df_norm = normalize_ohlcv(df)
@@ -449,6 +528,7 @@ def generate_smc_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.Da
         high = df_norm["high"]
         low = df_norm["low"]
         close = df_norm["close"]
+        session_ctx = extract_session_context(df_norm)
 
         signals = pd.DataFrame(index=df_norm.index)
 
@@ -502,6 +582,12 @@ def generate_smc_signals(df: pd.DataFrame, show_progress: bool = False) -> pd.Da
 
         # 11. Prior Day High / Low Sweep (1)
         signals["smc_pdh_pdl_sweep_signal"] = _calc_pdh_pdl_sweep(df_norm, open_p, high, low, close)
+        pbar.update(1)
+
+        # 12. Morning Midpoint Acceptance (1)
+        signals["smc_morning_midpoint_acceptance_signal"] = _calc_morning_midpoint_acceptance(
+            high, low, close, session_ctx
+        )
         pbar.update(1)
 
         # Ensure all columns are present, filled with NONE, and match index
