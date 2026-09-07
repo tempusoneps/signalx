@@ -1314,6 +1314,67 @@ def _calc_vn30_pre_atc_vwap_snapback(
     )
 
 
+def _calc_vn30_pdh_pdl_false_break_fade(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    session_ctx: SessionContext,
+) -> pd.Series:
+    """VN30F1M PDH/PDL False Breakout Liquidity Fade (MR022).
+
+    Fades failed breakouts beyond Previous Day High (PDH) or Low (PDL).
+    Buy: Low < PDL and Close >= PDL with lower wick >= 35% and bullish close.
+    Sell: High > PDH and Close <= PDH with upper wick >= 35% and bearish close.
+    """
+    n = len(close)
+    if n < 5:
+        return pd.Series(SignalState.NONE, index=close.index, dtype=str)
+
+    sess_id = session_ctx.session_id
+
+    # Prior Day High and Prior Day Low
+    day_high = high.groupby(sess_id).max()
+    day_low = low.groupby(sess_id).min()
+
+    pdh = sess_id.map(day_high.shift(1)).to_numpy(dtype=float, na_value=np.nan)
+    pdl = sess_id.map(day_low.shift(1)).to_numpy(dtype=float, na_value=np.nan)
+
+    c_arr = close.to_numpy(dtype=float, na_value=np.nan)
+    o_arr = open_p.to_numpy(dtype=float, na_value=np.nan)
+    h_arr = high.to_numpy(dtype=float, na_value=np.nan)
+    l_arr = low.to_numpy(dtype=float, na_value=np.nan)
+
+    rng = np.maximum(h_arr - l_arr, 1e-12)
+    body_low = np.minimum(o_arr, c_arr)
+    body_high = np.maximum(o_arr, c_arr)
+    lower_wick_pct = (body_low - l_arr) / rng
+    upper_wick_pct = (h_arr - body_high) / rng
+
+    valid = ~np.isnan(pdh) & ~np.isnan(pdl) & (pdh > pdl)
+
+    buy = valid & (l_arr < pdl) & (c_arr >= pdl) & (lower_wick_pct >= 0.35) & (c_arr > o_arr)
+    sell = valid & (h_arr > pdh) & (c_arr <= pdh) & (upper_wick_pct >= 0.35) & (c_arr < o_arr)
+
+    mid_p = (pdh + pdl) / 2.0
+    hold = (
+        valid
+        & ~buy
+        & ~sell
+        & (((c_arr > pdl) & (c_arr < mid_p)) | ((c_arr < pdh) & (c_arr > mid_p)))
+    )
+
+    return pd.Series(
+        np.select(
+            [buy, sell, hold],
+            [SignalState.BUY, SignalState.SELL, SignalState.HOLD],
+            default=SignalState.NONE,
+        ),
+        index=close.index,
+        dtype=str,
+    )
+
+
 def generate_mean_reversion_signals(
     df: pd.DataFrame,
     show_progress: bool = False,
